@@ -35,7 +35,7 @@ flows = [f for f in parse_dataflows(r.content, AG) if "TIVA" in f.id.upper()]
 for f in flows:
     print(" ", f.id, f.version, f.name, "| external:", f.external, "| service:", f.service_base)
 
-for flow_id in sys.argv[1:] or ["DSD_TIVA_MAINLV@DF_MAINLV", "DSD_TIVA_MAINSH@DF_MAINSH"]:
+for flow_id in (sys.argv[1].split(",") if len(sys.argv) > 1 and sys.argv[1] else ["DSD_TIVA_MAINLV@DF_MAINLV", "DSD_TIVA_MAINSH@DF_MAINSH"]):
     f = next(x for x in flows if x.id == flow_id)
     base = f.service_base or "https://sdmx.oecd.org/public/rest"
     for params in ({"references": "all", "detail": "referencepartial"}, {"references": "all"}):
@@ -47,11 +47,14 @@ for flow_id in sys.argv[1:] or ["DSD_TIVA_MAINLV@DF_MAINLV", "DSD_TIVA_MAINSH@DF
             print(" dims", fs.dims, "roles", fs.roles, "time", fs.time_range)
             for d in fs.dims:
                 print(f"  {d}: 코드목록 {len(fs.codelists.get(d, {}))}개, 제약 {len(fs.allowed.get(d, set()))}개, 예 {fs.codes(d)[:8]}")
-            print("  measure 코드", fs.codes(fs.roles["measure"])[:60])
+            print("  measure 코드", fs.codes(fs.roles["measure"])[:80])
+            extra = [d for d in fs.dims if d not in fs.roles.values()]
+            print("  역할 외 차원", {d: fs.codes(d)[:10] for d in extra})
             break
         except Exception as e:  # noqa: BLE001
             print(" 구조 해석 실패", e)
-    sel = {"area": ["KOR", "USA"], "partner": ["W"], "measure": fs.codes(fs.roles["measure"])[:2], "activity": ["_T", "C26"]}
+    want = [m for m in ("DEXFVApSH", "FEXDVApSH", "EXGR_FVASH", "EXGR_DVAFXSH") if fs.resolve_code(fs.roles["measure"], m)]
+    sel = {"area": ["KOR"], "partner": ["CHN", "JPN", "W"], "measure": [fs.resolve_code(fs.roles["measure"], m) for m in want[:2]] or fs.codes(fs.roles["measure"])[:1], "activity": ["_T"]}
     key = ".".join("+".join(sel[next(k for k, v in fs.roles.items() if v == d)]) if d in fs.roles.values() else "" for d in fs.dims)
     for p in ({"startPeriod": "2020", "endPeriod": "2022", "dimensionAtObservation": "AllDimensions", "format": "csvfile"},
               {"startPeriod": "2020", "endPeriod": "2022", "dimensionAtObservation": "AllDimensions"}):
