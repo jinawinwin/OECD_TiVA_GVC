@@ -1,0 +1,29 @@
+name: OECD API 진단
+
+on:
+  workflow_dispatch:
+    inputs:
+      flow:
+        description: "진단할 dataflow id"
+        default: "DSD_TIVA_MAINLV@DF_MAINLV"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: 구조 응답 진단
+        run: python tests/probe_oecd.py "${{ inputs.flow }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probe-out
+          path: probe_out/
+          retention-days: 7
