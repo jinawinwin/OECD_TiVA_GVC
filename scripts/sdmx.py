@@ -27,7 +27,6 @@ CSV_ACCEPT = "application/vnd.sdmx.data+csv;version=1.0.0, text/csv;q=0.9, */*;q
 XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
 
 ROLES = ("area", "partner", "measure", "activity")
-CANON_COLS = ["area", "partner", "measure", "activity", "year", "value", "unit", "unit_mult"]
 
 
 class NoResults(Exception):
@@ -332,13 +331,10 @@ class SdmxClient:
         raise RuntimeError(f"{flow.id}: 구조를 해석하지 못했습니다 ({last_err}, 주소 {url})")
 
     # ------------------------------------------------------------------ data
-    def build_key(self, fs: FlowStructure, selection: dict[str, list[str]]) -> str:
-        parts = []
-        for dim in fs.dims:
-            role = next((r for r, d in fs.roles.items() if d == dim), None)
-            codes = selection.get(role) if role else None
-            parts.append("+".join(codes) if codes else "")
-        return ".".join(parts)
+    @staticmethod
+    def build_key(fs: FlowStructure, selection: dict[str, list[str]]) -> str:
+        """selection은 차원 id -> 코드 목록. 없는 차원은 전체(빈칸)."""
+        return ".".join("+".join(selection.get(d) or []) for d in fs.dims)
 
     def data(self, fs: FlowStructure, selection: dict[str, list[str]], start: int, end: int) -> pd.DataFrame:
         key = self.build_key(fs, selection)
@@ -346,7 +342,7 @@ class SdmxClient:
         params = {"startPeriod": str(start), "endPeriod": str(end),
                   "dimensionAtObservation": "AllDimensions", "format": "csvfile"}
         r = self._get(url, params=params, accept=CSV_ACCEPT, stream=True, max_5xx=3)
-        if r.status_code in (400, 406) and "format" in (r.text[:2000].lower() if r.status_code else ""):
+        if r.status_code in (400, 406) and "format" in r.text[:2000].lower():
             # format 매개변수를 지원하지 않는 경우 Accept 헤더만으로 다시 요청
             r.close()
             params.pop("format")
@@ -358,13 +354,14 @@ class SdmxClient:
         if r.status_code in (413, 414, 502, 503, 504) or (r.status_code in (400, 500) and _looks_too_large(r)):
             r.close()
             raise TooLarge(f"HTTP {r.status_code}")
-        r.raise_for_status()
+        if not r.ok:
+            raise RuntimeError(f"HTTP {r.status_code} {r.text[:300]} ({r.url})")
         with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
             for chunk in r.iter_content(chunk_size=1 << 20):
                 tmp.write(chunk)
             path = Path(tmp.name)
         try:
-            return read_sdmx_csv(path, fs)
+            return read_sdmx_csv(path, fs.dims)
         finally:
             path.unlink(missing_ok=True)
 
@@ -377,38 +374,35 @@ def _looks_too_large(r) -> bool:
     return any(w in text for w in ("too large", "too many", "exceed", "limit", "maximum"))
 
 
-def read_sdmx_csv(path: Path, fs: FlowStructure) -> pd.DataFrame:
-    """SDMX-CSV(1.0, 2.0, 라벨 포함 형식 모두)를 표준 열로 정리한다."""
+SKIP_DIMS = {"FREQ"}
+
+
+def out_columns(dims: list[str]) -> list[str]:
+    return [d for d in dims if d not in SKIP_DIMS] + ["year", "value", "unit_mult"]
+
+
+def read_sdmx_csv(path: Path, dims: list[str]) -> pd.DataFrame:
+    """SDMX-CSV(1.0, 2.0, 라벨 포함 형식)를 차원 id 열 + year, value, unit_mult로 정리한다."""
     with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
         head = fh.read(4096)
     if not head.strip():
-        return empty_frame()
+        return empty_frame(dims)
     if head.lstrip().startswith("<"):
         raise RuntimeError("CSV 대신 XML 응답을 받았습니다: " + head[:300])
     header = next(csv.reader(io.StringIO(head.splitlines()[0])))
-    # 라벨 포함 형식("KOR: Korea")에 대비해 코드 열만 고른다
-    col_of = {}
-    for want in list(fs.roles.values()) + ["TIME_PERIOD", "OBS_VALUE", "UNIT_MEASURE", "UNIT_MULT"]:
-        if want in header:
-            col_of[want] = want
-    for need in list(fs.roles.values()) + ["TIME_PERIOD", "OBS_VALUE"]:
-        if need not in col_of:
+    keep = [d for d in dims if d not in SKIP_DIMS]
+    for need in keep + ["TIME_PERIOD", "OBS_VALUE"]:
+        if need not in header:
             raise RuntimeError(f"CSV에 필요한 열이 없습니다: {need} (열: {header[:20]})")
-    usecols = list(col_of.values())
+    usecols = keep + ["TIME_PERIOD", "OBS_VALUE"] + (["UNIT_MULT"] if "UNIT_MULT" in header else [])
     df = pd.read_csv(path, usecols=usecols, dtype=str, keep_default_na=False, encoding="utf-8-sig")
-    out = pd.DataFrame({
-        "area": _code_only(df[fs.roles["area"]]),
-        "partner": _code_only(df[fs.roles["partner"]]),
-        "measure": _code_only(df[fs.roles["measure"]]),
-        "activity": _code_only(df[fs.roles["activity"]]),
-        "year": pd.to_numeric(df["TIME_PERIOD"].str[:4], errors="coerce"),
-        "value": pd.to_numeric(df["OBS_VALUE"], errors="coerce"),
-        "unit": _code_only(df["UNIT_MEASURE"]) if "UNIT_MEASURE" in df else "",
-        "unit_mult": pd.to_numeric(df["UNIT_MULT"], errors="coerce") if "UNIT_MULT" in df else math.nan,
-    })
+    out = pd.DataFrame({d: _code_only(df[d]) for d in keep})
+    out["year"] = pd.to_numeric(df["TIME_PERIOD"].str[:4], errors="coerce")
+    out["value"] = pd.to_numeric(df["OBS_VALUE"], errors="coerce")
+    out["unit_mult"] = pd.to_numeric(df["UNIT_MULT"], errors="coerce") if "UNIT_MULT" in df else math.nan
     out = out.dropna(subset=["year", "value"])
     out["year"] = out["year"].astype("int16")
-    return out[CANON_COLS].reset_index(drop=True)
+    return out[out_columns(dims)].reset_index(drop=True)
 
 
 def _code_only(s: pd.Series) -> pd.Series:
@@ -418,9 +412,10 @@ def _code_only(s: pd.Series) -> pd.Series:
     return s.str.strip()
 
 
-def empty_frame() -> pd.DataFrame:
+def empty_frame(dims: list[str]) -> pd.DataFrame:
+    cols = out_columns(dims)
     return pd.DataFrame({c: pd.Series(dtype="float64" if c in ("value", "unit_mult") else
-                                      ("int16" if c == "year" else "object")) for c in CANON_COLS})
+                                      ("int16" if c == "year" else "object")) for c in cols})
 
 
 # ----------------------------------------------------------------- planning
@@ -432,8 +427,7 @@ def estimate_obs(selection: dict[str, list[str]], start: int, end: int) -> int:
 
 
 def plan_chunks(selection: dict[str, list[str]], start: int, end: int, max_obs: int,
-                key_len, max_key_len: int,
-                split_order=("measure", "area", "partner", "activity")) -> list[tuple[dict, int, int]]:
+                key_len, max_key_len: int) -> list[tuple[dict, int, int]]:
     """관측치 추정값과 URL 키 길이가 상한 이하가 되도록 요청을 나눈다."""
     out = []
     stack = [(selection, start, end)]
@@ -442,7 +436,7 @@ def plan_chunks(selection: dict[str, list[str]], start: int, end: int, max_obs: 
         if estimate_obs(sel, s, e) <= max_obs and key_len(sel) <= max_key_len:
             out.append((sel, s, e))
             continue
-        halves = split_once(sel, s, e, split_order, prefer_key=key_len(sel) > max_key_len)
+        halves = split_once(sel, s, e)
         if halves is None:
             out.append((sel, s, e))
         else:
@@ -450,17 +444,16 @@ def plan_chunks(selection: dict[str, list[str]], start: int, end: int, max_obs: 
     return out
 
 
-def split_once(sel, s, e, split_order=("measure", "area", "partner", "activity"), prefer_key=False):
-    order = split_order
-    if prefer_key:  # 키가 길면 코드 수가 가장 많은 차원부터 나눈다
-        order = sorted(sel, key=lambda r: -len(sel[r]))
-    for role in order:
-        codes = sel.get(role) or []
-        if len(codes) > 1:
-            mid = len(codes) // 2
-            a, b = dict(sel), dict(sel)
-            a[role], b[role] = codes[:mid], codes[mid:]
-            return [(a, s, e), (b, s, e)]
+def split_once(sel, s, e):
+    """코드 수가 가장 많은 차원을 반으로 나누고, 모두 한 개면 기간을 나눈다."""
+    dims = sorted((d for d in sel if len(sel[d] or []) > 1), key=lambda d: -len(sel[d]))
+    if dims:
+        d = dims[0]
+        codes = sel[d]
+        mid = len(codes) // 2
+        a, b = dict(sel), dict(sel)
+        a[d], b[d] = codes[:mid], codes[mid:]
+        return [(a, s, e), (b, s, e)]
     if e > s:
         mid = (s + e) // 2
         return [(sel, s, mid), (sel, mid + 1, e)]

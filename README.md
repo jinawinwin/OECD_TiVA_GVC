@@ -45,28 +45,37 @@ tests/                    모의 OECD 서버와 로컬 검증 스크립트
 
 ## 수집 방식
 
-`fetch_tiva.py` 는 OECD SDMX API(`sdmx.oecd.org/public/rest`, 기관 `OECD.STI.PIE`)에서 id에 `TIVA` 가 들어간 dataflow를 찾아 최신 판만 고른 뒤, 각 dataflow의 구조(DSD, 코드목록, 내용 제약)를 읽어 차원 순서와 사용 가능한 코드를 확인합니다. 지표 코드는 dataflow 이름이 바뀌어도 자동으로 다시 찾습니다.
+OECD는 TiVA dataflow를 기본 주소(`sdmx.oecd.org/public/rest`)에 외부 참조로 등록하고, 실제 구조와 데이터는 `sdmx.oecd.org/sti-public/rest`에서 제공합니다. `fetch_tiva.py`는 기관 `OECD.STI.PIE`에서 id에 `TIVA`가 들어간 dataflow 중 최신 판을 고르고, 외부 참조 주소를 따라가 구조(DSD, 코드목록, 내용 제약)를 읽습니다. 그다음 `config/tiva.yaml`의 블록마다 필요한 코드만 골라 받습니다.
 
-- 국가 × 산업 블록 (상대국 = 세계, 1995년부터) `EXGR, IMGR, EXGR_INT, EXGR_DVA, EXGR_FVA, VALU, FFD_DVA, DFD_FVA, EXGR_DVASH, EXGR_FVASH, EXGR_DVAFXSH`
-- 상대국 블록 (2000, 2005, 2010, 2015년과 최근 5년, 전 산업·제조업·중점 산업) `EXGR, FFD_DVA, DEXFVApSH, FEXDVApSH`
+| 블록 | dataflow | 내용 |
+|---|---|---|
+| levels | Principal Indicators, levels (MAINLV) | 국가 × 산업 × 연도 수준값, 상대국 세계 (EXGR, IMGR, EXGR_INT, EXGR_DVA, EXGR_FVA, VALU, FFD_DVA, DFD_FVA) |
+| shares | Principal Indicators, shares (MAINSH) | 총수출 대비 비중, 단위 PT_EXGR (EXGR_DVA, EXGR_FVA, FEXGR_DVA) |
+| destination | MAINLV | 수출 대상국별 총수출과 최종수요 부가가치 |
+| origin_backward | Origin of value added in gross exports (EXGRVA) | 수출 경제·산업의 총수출에 들어간 원천 경제별 부가가치 |
+| origin_forward | EXGRVA | 원천 경제·산업의 부가가치가 상대 경제 수출에 체화된 크기 |
 
-한 요청의 크기가 설정값을 넘으면 지표, 국가, 연도 순으로 나눠 요청하고, 서버가 응답 크기를 이유로 거절하면 더 잘게 나눠 다시 시도합니다. HTTP 429는 `Retry-After` 를 따릅니다. 받은 조각은 `data/cache/` 에 저장되어 중단 후 재실행 시 이어서 받습니다.
+상대국 블록은 2000, 2005, 2010, 2015년과 최근 5년, 전 산업·제조업·중점 산업으로 한정합니다. 2025년판 API는 지침서의 지표 코드(EXGR_FVASH 등) 대신 측정 단위 차원(UNIT_MEASURE)으로 비중의 기준을 구분하므로, 위처럼 실제 API 코드로 받습니다.
 
-범위를 바꾸려면 `config/tiva.yaml` 을 고치고 push하면 됩니다. 예를 들어 상대국 분석 산업을 늘리려면 `blocks.partner.activities` 에 산업 코드를 추가합니다.
+한 요청의 크기가 설정값을 넘으면 코드 수가 많은 차원부터 나눠 요청하고, 서버가 응답 크기를 이유로 거절하면 더 잘게 나눠 다시 시도합니다. HTTP 429는 `Retry-After`를 따릅니다. 받은 조각은 `data/cache/`에 저장되어 중단 후 재실행 시 이어서 받습니다. 범위를 바꾸려면 `config/tiva.yaml`을 고치고 push하면 됩니다.
+
+API 응답 형태가 바뀐 것으로 보이면 Actions의 **OECD API 진단** 워크플로를 실행하면 구조와 소량 데이터를 확인할 수 있습니다.
 
 ## 정리된 데이터 사용
 
 | 파일 | 내용 |
 |---|---|
-| `data/processed/tiva_country_industry.parquet` | area, partner(W), measure, activity, year, value, unit (TiVA 원값, 백만 달러 또는 %) |
-| `data/processed/tiva_partner.parquet` | area × partner × measure × activity × year |
+| `data/processed/tiva_levels.parquet` | MEASURE, REF_AREA, ACTIVITY, COUNTERPART_AREA(W), UNIT_MEASURE, year, value (백만 달러) |
+| `data/processed/tiva_shares.parquet` | 위와 같은 차원, 비중 (%) |
+| `data/processed/tiva_destination.parquet` | 수출 대상국별 EXGR, FFD_DVA (백만 달러) |
+| `data/processed/tiva_origin_backward.parquet`, `tiva_origin_forward.parquet` | EXGRVA 원천·수출 경제와 산업별 부가가치 (백만 달러) |
 | `data/processed/country_summary.csv` | 국가·지역별 전 산업·제조업 핵심 지표 (후방·전방·GVC 참여율 포함) |
 | `data/processed/manifest.json` | 사용한 dataflow, 판, 최신 연도, 행 수 |
 
 ```python
 import pandas as pd
-ci = pd.read_parquet("data/processed/tiva_country_industry.parquet")
-kor = ci.query("area == 'KOR' and activity == 'C26' and measure == 'EXGR_FVASH'")
+lv = pd.read_parquet("data/processed/tiva_levels.parquet")
+kor = lv.query("REF_AREA == 'KOR' and ACTIVITY == 'C26' and MEASURE == 'EXGR_FVA'")
 ```
 
 R에서는 `arrow::read_parquet()` 로 읽을 수 있고, Stata에서는 `country_summary.csv` 를 쓰거나 parquet을 CSV로 변환해 사용합니다.
@@ -75,12 +84,12 @@ R에서는 `arrow::read_parquet()` 로 읽을 수 있고, Stata에서는 `countr
 
 | 지표 | 정의 |
 |---|---|
-| 후방 참여율 | 총수출 중 해외부가가치 비중 (EXGR_FVASH) |
-| 전방 참여율 | 제3국 수출에 체화된 자국 부가가치, 총수출 대비 (EXGR_DVAFXSH) |
+| 후방 참여율 | 총수출 중 해외부가가치 비중 (EXGR_FVA, PT_EXGR) |
+| 전방 참여율 | 제3국 수출에 체화된 자국 부가가치, 총수출 대비 (FEXGR_DVA, PT_EXGR) |
 | GVC 참여율 | 후방 참여율 + 전방 참여율 |
 | 세계 수출 점유율 | 개별 경제(기타 세계 포함) 총수출 합계 대비 |
 | 부가가치 기준 RCA | (경제의 산업 수출 DVA / 경제 전체 수출 DVA) ÷ (세계 산업 수출 DVA / 세계 전체 수출 DVA) |
-| 역내 조달 비중 | 지역 해외부가가치 중 회원국 원천 비중 (DEXFVApSH 기반) |
+| 역내 조달 비중 | 지역 해외부가가치 중 회원국 원천 비중 (EXGRVA 기반) |
 
 지역 지표는 회원국 값을 합산해 계산하므로 회원국 간 교역이 포함됩니다. TiVA 공식 집계(EU27_2020, ASEAN)는 지역을 하나의 경제로 보아 역외 교역만 반영하므로 수준이 다릅니다. 지표는 국가·산업 간 연관성을 보여 주며 인과관계를 뜻하지 않습니다.
 

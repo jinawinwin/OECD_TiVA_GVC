@@ -1,7 +1,12 @@
 """OECD SDMX API를 흉내 내는 테스트용 로컬 서버.
 
-수집·가공 코드를 실제 OECD 서버 없이 검증하기 위한 것이다. 값은 내부적으로 일관된 합성 데이터이며
-실제 TiVA 수치가 아니다. 대시보드나 분석에 사용하지 않는다.
+2026년 11월에 확인한 실제 API 구조를 따른다.
+- /public/rest/dataflow/OECD.STI.PIE 는 TiVA dataflow를 외부 참조(isExternalReference, structureURL)로만 보여 준다.
+- 실제 구조와 데이터는 /sti-public/rest 에 있다.
+- MAINLV, MAINSH 차원 = MEASURE, REF_AREA, ACTIVITY, COUNTERPART_AREA, UNIT_MEASURE, FREQ
+- MAINSH 비중은 UNIT_MEASURE로 기준을 구분한다 (PT_EXGR = 총수출 대비 %).
+- EXGRVA 차원 = MEASURE, VALUE_ADDED_SOURCE_AREA, VALUE_ADDED_SOURCE_ACTIVITY, EXPORTING_AREA, EXPORTING_ACTIVITY, UNIT_MEASURE, FREQ
+값은 내부적으로 일관된 합성 데이터이며 실제 TiVA 수치가 아니다.
 
     python tests/mock_oecd.py --port 8765 [--too-large 200000] [--fail-first-429]
 """
@@ -12,13 +17,11 @@ import io
 import itertools
 import re
 import sys
-import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import numpy as np
-import pandas as pd
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,15 +44,29 @@ ACT_AGG = {
 }
 ACTS = DETAIL + list(ACT_AGG)
 YEARS = list(range(1995, 2023))
-LEVELS = ["EXGR", "IMGR", "EXGR_INT", "EXGR_FNL", "EXGR_DVA", "EXGR_FVA", "VALU", "PROD", "FFD_DVA", "DFD_FVA"]
-SHARES = ["EXGR_DVASH", "EXGR_FVASH", "EXGR_DVAFXSH", "DEXFVApSH", "FEXDVApSH", "EXGR_INTDVASH"]
+LV_MEASURES = ["EXGR", "EXGR_FNL", "EXGR_INT", "EXGR_DVA", "EXGR_DDC", "EXGR_IDC", "EXGR_RIM", "EXGR_FVA", "IMGR",
+               "IMGR_FNL", "IMGR_INT", "IMGR_DVA", "BALGR", "REII", "PROD", "VALU", "FFD_DVA", "DFD_FVA", "BALVAFD",
+               "FD_VA", "CONS_VA", "GFCF_VA"]
+SH_MEASURES = ["EXGR_DVA", "EXGR_FVA", "IMGR_DVA", "REII", "FFD_DVA", "FEXGR_DVA", "EXGR_INT_DVA", "EXGR_PSH",
+               "EXGR_FVA_PSH", "FEXGR_DVA_PSH"]
+SH_UNITS = ["PT_EXGR", "PT_EXGR_T", "PT_EXGR_DVA", "PT_VA"]
+MAIN_DIMS = ["MEASURE", "REF_AREA", "ACTIVITY", "COUNTERPART_AREA", "UNIT_MEASURE", "FREQ"]
+VA_DIMS = ["MEASURE", "VALUE_ADDED_SOURCE_AREA", "VALUE_ADDED_SOURCE_ACTIVITY", "EXPORTING_AREA", "EXPORTING_ACTIVITY",
+           "UNIT_MEASURE", "FREQ"]
+PARTNERS = AREAS + ["DXD"]
 FLOWS = {
-    "DSD_TIVA_MAINLV@DF_MAINLV": ("DSD_TIVA_MAINLV", "Trade in Value Added (TiVA) 2025 edition: Principal Indicators, levels", LEVELS),
-    "DSD_TIVA_MAINSH@DF_MAINSH": ("DSD_TIVA_MAINSH", "Trade in Value Added (TiVA) 2025 edition: Principal Indicators, shares", SHARES),
-    "DSD_TIVA_MAINLV@DF_MAINLV_2023": ("DSD_TIVA_MAINLV", "Trade in Value Added (TiVA) 2023 edition: Principal Indicators, levels", LEVELS),
+    "DSD_TIVA_MAINLV@DF_MAINLV": ("Trade in Value Added (TiVA) 2025 edition: Principal Indicators, levels", MAIN_DIMS,
+                                  {"MEASURE": LV_MEASURES, "REF_AREA": AREAS, "ACTIVITY": ACTS, "COUNTERPART_AREA": PARTNERS,
+                                   "UNIT_MEASURE": ["USD"], "FREQ": ["A"]}),
+    "DSD_TIVA_MAINSH@DF_MAINSH": ("Trade in Value Added (TiVA) 2025 edition: Principal Indicators, shares", MAIN_DIMS,
+                                  {"MEASURE": SH_MEASURES, "REF_AREA": AREAS, "ACTIVITY": ACTS, "COUNTERPART_AREA": PARTNERS,
+                                   "UNIT_MEASURE": SH_UNITS, "FREQ": ["A"]}),
+    "DSD_TIVA_EXGRVA@DF_EXGRVA": ("Trade in Value Added (TiVA) 2025 edition: Origin of value added in gross exports", VA_DIMS,
+                                  {"MEASURE": ["EXGRVA"], "VALUE_ADDED_SOURCE_AREA": AREAS, "VALUE_ADDED_SOURCE_ACTIVITY": ACTS,
+                                   "EXPORTING_AREA": AREAS, "EXPORTING_ACTIVITY": ACTS, "UNIT_MEASURE": ["USD"], "FREQ": ["A"]}),
+    "DSD_TIVA_FDVA@DF_FDVA": ("Trade in Value Added (TiVA) 2025 edition: Origin of value added in final demand", VA_DIMS, None),
+    "DSD_TIVA_MAINLV@DF_MAINLV_2023": ("Trade in Value Added (TiVA) 2023 edition: Principal Indicators, levels", MAIN_DIMS, None),
 }
-# 차원 순서를 일부러 섞어 역할 매핑을 시험한다
-DIMS = ["REF_AREA", "MEASURE", "ACTIVITY", "COUNTERPART_AREA", "UNIT_MEASURE"]
 
 AGG_MEMBERS = {
     "W": ECON,
@@ -64,15 +81,13 @@ AGG_MEMBERS = {
 
 rng = np.random.default_rng(42)
 nE, nD, nY = len(ECON), len(DETAIL), len(YEARS)
-size = np.exp(rng.normal(10, 1.3, nE))            # 경제 규모
-w_act = np.exp(rng.normal(0, 1.0, (nE, nD)))      # 국가별 산업 구성
+size = np.exp(rng.normal(10, 1.3, nE))
+w_act = np.exp(rng.normal(0, 1.0, (nE, nD)))
 growth = np.exp(0.045 * (np.arange(nY) - 20) + rng.normal(0, 0.03, nY))
 EXGR_D = size[:, None, None] * w_act[:, :, None] * growth[None, None, :] / w_act.sum(1)[:, None, None] * 0.25
 fva = np.clip(rng.uniform(0.08, 0.45, nE)[:, None, None] + rng.normal(0, 0.06, (1, nD, 1))
               + np.linspace(-0.04, 0.04, nY)[None, None, :], 0.02, 0.8)
 fwd = np.clip(rng.uniform(0.10, 0.40, nE)[:, None, None] + rng.normal(0, 0.05, (1, nD, 1)), 0.01, 0.7)
-FVA_D = EXGR_D * fva
-DVAFX_D = EXGR_D * fwd
 
 
 def _agg_acts(arr):
@@ -92,149 +107,129 @@ def _agg_areas(arr):
 
 
 EXGR = _agg_areas(_agg_acts(EXGR_D))
-FVA = _agg_areas(_agg_acts(FVA_D))
-DVAFX = _agg_areas(_agg_acts(DVAFX_D))
+FVA = _agg_areas(_agg_acts(EXGR_D * fva))
+DVAFX = _agg_areas(_agg_acts(EXGR_D * fwd))
 DVA = EXGR - FVA
-BLOCK = {
-    "EXGR": EXGR, "EXGR_FVA": FVA, "EXGR_DVA": DVA, "IMGR": EXGR * 0.93, "EXGR_INT": EXGR * 0.56,
-    "EXGR_FNL": EXGR * 0.44, "VALU": EXGR * 1.8, "PROD": EXGR * 3.1, "FFD_DVA": DVA * 0.72, "DFD_FVA": FVA * 0.8,
-    "EXGR_DVASH": DVA / EXGR * 100, "EXGR_FVASH": FVA / EXGR * 100, "EXGR_DVAFXSH": DVAFX / EXGR * 100,
-    "EXGR_INTDVASH": DVA * 0.5 / EXGR * 100,
-}
-# 상대국 가중치 (자기 자신 제외), 규모가 큰 상대국일수록 비중이 크다
-pw = size[None, :] * np.exp(rng.normal(0, 0.8, (nE, nE)))
+LV = {"EXGR": EXGR, "EXGR_FVA": FVA, "EXGR_DVA": DVA, "IMGR": EXGR * 0.93, "EXGR_INT": EXGR * 0.56,
+      "EXGR_FNL": EXGR * 0.44, "VALU": EXGR * 1.8, "PROD": EXGR * 3.1, "FFD_DVA": DVA * 0.72, "DFD_FVA": FVA * 0.8}
+SH = {("EXGR_DVA", "PT_EXGR"): DVA / EXGR * 100, ("EXGR_FVA", "PT_EXGR"): FVA / EXGR * 100,
+      ("FEXGR_DVA", "PT_EXGR"): DVAFX / EXGR * 100,
+      ("EXGR_DVA", "PT_VA"): DVA / LV["VALU"] * 100}          # 단위 선택을 시험하기 위한 다른 기준
+pw = size[None, :] * np.exp(rng.normal(0, 0.8, (nE, nE)))     # 원천·상대국 가중치 (자기 자신 0)
 np.fill_diagonal(pw, 0)
 pw = pw / pw.sum(1, keepdims=True)
-PARTNERS = ECON + AGG + ["DXD"]
+pw2 = size[None, :] * np.exp(rng.normal(0, 0.8, (nE, nE)))
+np.fill_diagonal(pw2, 0)
+pw2 = pw2 / pw2.sum(1, keepdims=True)
+AI = {a: i for i, a in enumerate(AREAS)}
+KI = {k: i for i, k in enumerate(ACTS)}
+EI = {e: i for i, e in enumerate(ECON)}
 
 
-def partner_value(measure, area_i, act_i, year_i):
-    """area(개별 경제 또는 집계) × 모든 상대국 벡터."""
-    if area_i >= nE:
+def value(flow, c, yi):
+    if flow.endswith("MAINLV"):
+        m, a, k, p = c["MEASURE"], c["REF_AREA"], c["ACTIVITY"], c["COUNTERPART_AREA"]
+        if m not in LV:
+            return None
+        ai, ki = AI[a], KI[k]
+        if p == "W":
+            return LV[m][ai, ki, yi]
+        if m in ("EXGR", "FFD_DVA") and a in EI and p in EI and p != a:
+            return LV[m][ai, ki, yi] * pw2[EI[a], EI[p]]
         return None
-    base_share = {"DEXFVApSH": BLOCK["EXGR_FVASH"], "FEXDVApSH": BLOCK["EXGR_DVAFXSH"]}.get(measure)
-    if base_share is not None:
-        total = base_share[area_i, act_i, year_i]
-    else:
-        total = BLOCK[measure][area_i, act_i, year_i]
-    vec = total * pw[area_i]
-    agg = [vec[[ECON.index(m) for m in AGG_MEMBERS[c]]].sum() if c != "W" else total for c in AGG]
-    return np.concatenate([vec, agg, [np.nan]])
+    if flow.endswith("MAINSH"):
+        key = (c["MEASURE"], c["UNIT_MEASURE"])
+        if key in SH and c["COUNTERPART_AREA"] == "W":
+            return SH[key][AI[c["REF_AREA"]], KI[c["ACTIVITY"]], yi]
+        return None
+    if flow.endswith("EXGRVA"):
+        s, sa, e, ea = (c["VALUE_ADDED_SOURCE_AREA"], c["VALUE_ADDED_SOURCE_ACTIVITY"],
+                        c["EXPORTING_AREA"], c["EXPORTING_ACTIVITY"])
+        if s not in EI or e not in EI:
+            return None
+        if sa == "_T":          # 후방: 수출 경제 e(산업 ea)의 총수출에 들어간 원천 s의 부가가치
+            ie, ke = EI[e], KI[ea]
+            return DVA[ie, ke, yi] if s == e else FVA[ie, ke, yi] * pw[ie, EI[s]]
+        if ea == "_T":          # 전방: 원천 s(산업 sa)의 부가가치가 e의 수출에 체화된 크기
+            i_s, ks = EI[s], KI[sa]
+            return DVA[i_s, ks, yi] * 0.6 if s == e else DVAFX[i_s, ks, yi] * pw2[i_s, EI[e]]
+        return 0.01
+    return None
 
 
-def unit_of(m):
-    return "PT_B1GQ" if m.endswith("SH") else "USD_EXC"
+STATE = {"too_large": 10**9, "fail_429": False}
 
 
-STATE = {"too_large": 10**9, "fail_429": False, "requests": 0}
-
-
-def structure_xml(flow_id):
-    dsd_id, name, measures = FLOWS[flow_id]
-    def cl(cid, codes):
-        items = "".join(f'<str:Code id="{c}"><com:Name xml:lang="en">{c} name</com:Name></str:Code>' for c in codes)
-        return f'<str:Codelist id="{cid}" agencyID="OECD" version="1.0">{items}</str:Codelist>'
-    codelists = (cl("CL_AREA", AREAS + ["DXD"]) + cl("CL_MEASURE_TIVA", LEVELS + SHARES + ["EXGR_BSCI"])
-                 + cl("CL_ACTIVITY_ISIC4", ACTS) + cl("CL_UNIT_MEASURE", ["USD_EXC", "PT_B1GQ"]))
-    clmap = {"REF_AREA": "CL_AREA", "COUNTERPART_AREA": "CL_AREA", "MEASURE": "CL_MEASURE_TIVA",
-             "ACTIVITY": "CL_ACTIVITY_ISIC4", "UNIT_MEASURE": "CL_UNIT_MEASURE"}
-    dims = "".join(
-        f'<str:Dimension id="{d}" position="{i+1}"><str:LocalRepresentation><str:Enumeration>'
-        f'<Ref id="{clmap[d]}" version="1.0" agencyID="OECD" package="codelist" class="Codelist"/>'
-        f'</str:Enumeration></str:LocalRepresentation></str:Dimension>' for i, d in enumerate(DIMS))
-    dims += f'<str:TimeDimension id="TIME_PERIOD" position="{len(DIMS)+1}"/>'
-    vals = "".join(f"<com:Value>{m}</com:Value>" for m in measures)
-    constraint = (
-        f'<str:ContentConstraint id="CR_A_{flow_id}" type="Actual" agencyID="OECD.STI.PIE" version="1.0">'
-        f'<str:ConstraintAttachment><str:Dataflow><Ref id="{flow_id}" version="1.0" agencyID="OECD.STI.PIE"/></str:Dataflow></str:ConstraintAttachment>'
-        f'<str:CubeRegion include="true"><com:KeyValue id="MEASURE">{vals}</com:KeyValue>'
-        f'<com:KeyValue id="TIME_PERIOD"><com:TimeRange><com:StartPeriod isInclusive="true">1995-01-01T00:00:00</com:StartPeriod>'
-        f'<com:EndPeriod isInclusive="true">2022-12-31T00:00:00</com:EndPeriod></com:TimeRange></com:KeyValue></str:CubeRegion>'
-        f'</str:ContentConstraint>')
-    return (
-        '<?xml version="1.0" encoding="utf-8"?>'
-        '<message:Structure xmlns:message="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/message" '
-        'xmlns:str="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure" '
-        'xmlns:com="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/common"><message:Structures>'
-        f'<str:Codelists>{codelists}</str:Codelists>'
-        f'<str:Constraints>{constraint}</str:Constraints>'
-        f'<str:Dataflows><str:Dataflow id="{flow_id}" agencyID="OECD.STI.PIE" version="1.0"><com:Name xml:lang="en">{name}</com:Name>'
-        f'<str:Structure><Ref id="{dsd_id}" version="1.0" agencyID="OECD.STI.PIE" package="datastructure" class="DataStructure"/></str:Structure></str:Dataflow></str:Dataflows>'
-        f'<str:DataStructures><str:DataStructure id="{dsd_id}" agencyID="OECD.STI.PIE" version="1.0"><com:Name xml:lang="en">{dsd_id}</com:Name>'
-        f'<str:DataStructureComponents><str:DimensionList id="DimensionDescriptor">{dims}</str:DimensionList></str:DataStructureComponents>'
-        '</str:DataStructure></str:DataStructures></message:Structures></message:Structure>')
-
-
-def dataflows_xml():
-    items = "".join(
-        f'<str:Dataflow id="{fid}" agencyID="OECD.STI.PIE" version="1.0"><com:Name xml:lang="en">{name}</com:Name>'
-        f'<str:Structure><Ref id="{dsd}" version="1.0" agencyID="OECD.STI.PIE" package="datastructure" class="DataStructure"/></str:Structure></str:Dataflow>'
-        for fid, (dsd, name, _) in FLOWS.items())
-    items += ('<str:Dataflow id="DSD_STAN@DF_STAN_2025" agencyID="OECD.STI.PIE" version="1.0"><com:Name xml:lang="en">STAN</com:Name>'
-              '<str:Structure><Ref id="DSD_STAN" version="1.0" agencyID="OECD.STI.PIE" package="datastructure" class="DataStructure"/></str:Structure></str:Dataflow>')
+def _xml(body):
     return ('<?xml version="1.0" encoding="utf-8"?>'
             '<message:Structure xmlns:message="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/message" '
-            'xmlns:str="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure" '
-            'xmlns:com="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/common"><message:Structures>'
-            f'<str:Dataflows>{items}</str:Dataflows></message:Structures></message:Structure>')
+            'xmlns:structure="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure" '
+            'xmlns:common="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/common"><message:Structures>'
+            + body + '</message:Structures></message:Structure>')
 
 
-def data_csv(flow_id, key, start, end):
-    dsd_id, _, measures = FLOWS[flow_id]
+def dataflows_xml(host):
+    items = "".join(
+        f'<structure:Dataflow id="{fid}" agencyID="OECD.STI.PIE" version="1.1" isExternalReference="true" isFinal="true" '
+        f'structureURL="http://{host}/sti-public/rest/dataflow/OECD.STI.PIE/{fid}/1.1"><common:Name xml:lang="en">{name}</common:Name></structure:Dataflow>'
+        for fid, (name, _, _) in FLOWS.items())
+    items += ('<structure:Dataflow id="DSD_STAN@DF_STAN_2025" agencyID="OECD.STI.PIE" version="1.0"><common:Name xml:lang="en">STAN</common:Name>'
+              '<structure:Structure><Ref id="DSD_STAN" version="1.0" agencyID="OECD.STI.PIE" package="datastructure" class="DataStructure"/></structure:Structure></structure:Dataflow>')
+    return _xml(f"<structure:Dataflows>{items}</structure:Dataflows>")
+
+
+def structure_xml(fid):
+    name, dims, pools = FLOWS[fid]
+    dsd = fid.split("@")[0]
+    def cl(cid, codes):
+        items = "".join(f'<structure:Code id="{c}"><common:Name xml:lang="en">{c} name</common:Name></structure:Code>' for c in codes)
+        return f'<structure:Codelist id="{cid}" agencyID="OECD" version="1.0">{items}</structure:Codelist>'
+    codelists = "".join(cl(f"CL_{d}", pools[d]) for d in dims)
+    dim_xml = "".join(
+        f'<structure:Dimension id="{d}" position="{i+1}"><structure:LocalRepresentation><structure:Enumeration>'
+        f'<Ref id="CL_{d}" version="1.0" agencyID="OECD" package="codelist" class="Codelist"/>'
+        f'</structure:Enumeration></structure:LocalRepresentation></structure:Dimension>' for i, d in enumerate(dims))
+    dim_xml += f'<structure:TimeDimension id="TIME_PERIOD" position="{len(dims)+1}"/>'
+    kvs = "".join(f'<common:KeyValue id="{d}">' + "".join(f"<common:Value>{c}</common:Value>" for c in pools[d]) + "</common:KeyValue>" for d in dims)
+    kvs += ('<common:KeyValue id="TIME_PERIOD"><common:TimeRange><common:StartPeriod isInclusive="true">1995-01-01T00:00:00</common:StartPeriod>'
+            '<common:EndPeriod isInclusive="true">2022-12-31T00:00:00</common:EndPeriod></common:TimeRange></common:KeyValue>')
+    constraint = (f'<structure:ContentConstraint id="CR_A_{fid}" type="Actual" agencyID="OECD.STI.PIE" version="1.0">'
+                  f'<structure:ConstraintAttachment><structure:Dataflow><Ref id="{fid}" version="1.1" agencyID="OECD.STI.PIE"/></structure:Dataflow></structure:ConstraintAttachment>'
+                  f'<structure:CubeRegion include="true">{kvs}</structure:CubeRegion></structure:ContentConstraint>')
+    return _xml(
+        f'<structure:Codelists>{codelists}</structure:Codelists><structure:Constraints>{constraint}</structure:Constraints>'
+        f'<structure:Dataflows><structure:Dataflow id="{fid}" agencyID="OECD.STI.PIE" version="1.1"><common:Name xml:lang="en">{name}</common:Name>'
+        f'<structure:Structure><Ref id="{dsd}" version="1.1" agencyID="OECD.STI.PIE" package="datastructure" class="DataStructure"/></structure:Structure></structure:Dataflow></structure:Dataflows>'
+        f'<structure:DataStructures><structure:DataStructure id="{dsd}" agencyID="OECD.STI.PIE" version="1.1"><common:Name xml:lang="en">{dsd}</common:Name>'
+        f'<structure:DataStructureComponents><structure:DimensionList id="DimensionDescriptor">{dim_xml}</structure:DimensionList></structure:DataStructureComponents>'
+        '</structure:DataStructure></structure:DataStructures>')
+
+
+def data_csv(fid, key, start, end):
+    name, dims, pools = FLOWS[fid]
     parts = key.split(".")
-    if len(parts) != len(DIMS):
-        return 400, "Semantic error: key length"
-    sel = {}
-    pools = {"REF_AREA": AREAS, "MEASURE": measures, "ACTIVITY": ACTS, "COUNTERPART_AREA": PARTNERS,
-             "UNIT_MEASURE": ["USD_EXC", "PT_B1GQ"]}
-    for d, p in zip(DIMS, parts):
-        sel[d] = [c for c in (p.split("+") if p else pools[d]) if c in pools[d]]
+    if len(parts) != len(dims):
+        return 400, "Semantic error: wrong number of dimensions in key"
+    sel = [[c for c in (p.split("+") if p else pools[d]) if c in pools[d]] for d, p in zip(dims, parts)]
     years = [y for y in YEARS if start <= y <= end]
-    n = len(sel["REF_AREA"]) * len(sel["MEASURE"]) * len(sel["ACTIVITY"]) * len(sel["COUNTERPART_AREA"]) * len(years)
+    n = int(np.prod([len(s) for s in sel])) * len(years)
     if n > STATE["too_large"]:
         return 413, "Request Entity Too Large: response exceeds maximum"
-    rows = []
-    for m in sel["MEASURE"]:
-        u = unit_of(m)
-        if sel["UNIT_MEASURE"] and u not in sel["UNIT_MEASURE"]:
-            continue
-        for a in sel["REF_AREA"]:
-            ai = AREAS.index(a)
-            for act in sel["ACTIVITY"]:
-                ki = ACTS.index(act)
-                for y in years:
-                    yi = YEARS.index(y)
-                    if m in BLOCK:
-                        if "W" in sel["COUNTERPART_AREA"]:
-                            rows.append((a, m, act, "W", u, y, BLOCK[m][ai, ki, yi]))
-                        if m in ("EXGR", "FFD_DVA") and len(sel["COUNTERPART_AREA"]) > 1:
-                            vec = partner_value(m, ai, ki, yi)
-                            if vec is not None:
-                                for p in sel["COUNTERPART_AREA"]:
-                                    if p != "W":
-                                        v = vec[PARTNERS.index(p)]
-                                        if not np.isnan(v):
-                                            rows.append((a, m, act, p, u, y, v))
-                    elif m in ("DEXFVApSH", "FEXDVApSH"):
-                        vec = partner_value(m, ai, ki, yi)
-                        if vec is None:
-                            continue
-                        for p in sel["COUNTERPART_AREA"]:
-                            v = vec[PARTNERS.index(p)]
-                            if not np.isnan(v):
-                                rows.append((a, m, act, p, u, y, v))
-    if not rows:
-        return 404, "NoResultsFound"
-    df = pd.DataFrame(rows, columns=["REF_AREA", "MEASURE", "ACTIVITY", "COUNTERPART_AREA", "UNIT_MEASURE",
-                                     "TIME_PERIOD", "OBS_VALUE"])
-    df.insert(0, "ACTION", "I")
-    df.insert(0, "STRUCTURE_ID", f"OECD.STI.PIE:{flow_id}(1.0)")
-    df.insert(0, "STRUCTURE", "DATAFLOW")
-    df["OBS_VALUE"] = df["OBS_VALUE"].round(4)
-    df["UNIT_MULT"] = np.where(df["UNIT_MEASURE"] == "USD_EXC", 6, 0)
-    df["OBS_STATUS"] = "A"
     buf = io.StringIO()
-    df.to_csv(buf, index=False)
+    buf.write(",".join(["DATAFLOW"] + dims + ["TIME_PERIOD", "OBS_VALUE", "UNIT_MULT"]) + "\n")
+    rows = 0
+    tag = f"OECD.STI.PIE:{fid}(1.1)"
+    for combo in itertools.product(*sel):
+        c = dict(zip(dims, combo))
+        for y in years:
+            v = value(fid, c, YEARS.index(y))
+            if v is None or not np.isfinite(v):
+                continue
+            mult = 0 if c["UNIT_MEASURE"].startswith("PT") else 6
+            buf.write(",".join([tag, *combo, str(y), f"{v:.3f}", str(mult)]) + "\n")
+            rows += 1
+    if not rows:
+        return 404, "No Results Found"
     return 200, buf.getvalue()
 
 
@@ -253,27 +248,29 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        STATE["requests"] += 1
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
-        path = u.path.replace("/public/rest", "")
-        if path.rstrip("/") == "/dataflow/OECD.STI.PIE":
-            return self._send(200, dataflows_xml(), "application/xml")
-        m = re.match(r"^/dataflow/OECD\.STI\.PIE/([^/]+)/([^/]+)$", path)
+        host = self.headers.get("Host", "127.0.0.1")
+        if u.path.rstrip("/") == "/public/rest/dataflow/OECD.STI.PIE":
+            return self._send(200, dataflows_xml(host), "application/vnd.sdmx.structure+xml; version=2.1")
+        m = re.match(r"^/public/rest/dataflow/OECD\.STI\.PIE/([^/]+)/([^/]+)$", u.path)
+        if m:   # 기본 주소에서는 외부 참조만 돌려준다 (DataStructure 없음)
+            return self._send(200, dataflows_xml(host), "application/vnd.sdmx.structure+xml; version=2.1")
+        m = re.match(r"^/sti-public/rest/dataflow/OECD\.STI\.PIE/([^/]+)/([^/]+)$", u.path)
         if m:
-            if m.group(1) not in FLOWS:
-                return self._send(404, "not found")
-            if q.get("detail") == "referencepartial":   # 일부 서버가 지원하지 않는 경우를 흉내 낸다
-                return self._send(501, "Not implemented")
-            return self._send(200, structure_xml(m.group(1)), "application/xml")
-        m = re.match(r"^/data/OECD\.STI\.PIE,([^,]+),([^/]+)/(.*)$", path)
+            fid = m.group(1)
+            if fid not in FLOWS or FLOWS[fid][2] is None:
+                return self._send(404, "No Results Found")
+            return self._send(200, structure_xml(fid), "application/vnd.sdmx.structure+xml; version=2.1")
+        m = re.match(r"^/sti-public/rest/data/OECD\.STI\.PIE,([^,]+),([^/]+)/(.*)$", u.path)
         if m:
             if STATE["fail_429"]:
                 STATE["fail_429"] = False
                 return self._send(429, "Too Many Requests")
-            if m.group(1) not in FLOWS:
-                return self._send(404, "NoResultsFound")
-            code, body = data_csv(m.group(1), m.group(3), int(q.get("startPeriod", 1995)), int(q.get("endPeriod", 2022)))
+            fid = m.group(1)
+            if fid not in FLOWS or FLOWS[fid][2] is None:
+                return self._send(404, "No Results Found")
+            code, body = data_csv(fid, m.group(3), int(q.get("startPeriod", 1995)), int(q.get("endPeriod", 2022)))
             return self._send(code, body, "application/vnd.sdmx.data+csv; charset=utf-8" if code == 200 else "text/plain")
         return self._send(404, "unknown path")
 

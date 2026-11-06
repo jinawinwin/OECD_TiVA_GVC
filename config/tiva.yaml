@@ -1,24 +1,17 @@
 # OECD TiVA 수집 설정
 # 지표·산업·국가 코드는 "Guide to OECD Trade in Value Added (TiVA) Indicators, 2025 edition" 기준.
-# dataflow id와 차원 순서는 실행 시 OECD SDMX API에서 자동으로 확인한다.
+# dataflow 위치와 차원 순서는 실행 시 OECD SDMX API에서 자동으로 확인한다.
+# 2025년판 API는 비중 지표를 UNIT_MEASURE로 구분하고, 원천국별 부가가치는 EXGRVA dataflow에 있다.
 
 source:
-  base_url: https://sdmx.oecd.org/public/rest
+  base_url: https://sdmx.oecd.org/public/rest   # TiVA dataflow는 여기서 /sti-public/rest로 외부 참조된다
   agency: OECD.STI.PIE
   flow_keyword: TIVA              # dataflow id에 이 문자열이 들어간 것만 탐색
-  preferred_flow_order: [MAINLV, MAIN, BSCI]   # 같은 지표가 여러 dataflow에 있으면 앞의 것을 우선
   min_request_interval_sec: 6     # 요청 사이 최소 간격 (OECD API 사용량 제한 대응)
   max_obs_per_query: 250000       # 한 번의 요청에서 받을 관측치 상한 추정값, 초과 시 자동 분할
   max_key_length: 1800            # URL 키 길이 상한, 초과 시 자동 분할
   timeout_sec: 600
   max_retries: 10
-
-# 차원 id 후보. DSD에서 처음 일치하는 것을 사용한다.
-dimensions:
-  area: [REF_AREA, COU, COUNTRY]
-  partner: [COUNTERPART_AREA, PAR, PARTNER]
-  measure: [MEASURE, INDICATOR, VAR]
-  activity: [ACTIVITY, IND, INDUSTRY]
 
 codes:
   world: W
@@ -44,24 +37,64 @@ activities:
     D, E, F, G, H49, H50, H51, H52, H53, I, J58T60, J61, J62_63, K, L, M, N, O, P, Q, R, S, T
   ]
   aggregates: [_T, A, B, C, BTE, D_E, F, GTT]
+  partner: [_T, C, C26, C27, C19, C301, C29, C20]   # 상대국별 분석 산업 (전 산업, 제조업, 중점 산업)
 
+years:
+  partner_benchmark: [2000, 2005, 2010, 2015]
+  partner_recent: 5                 # 최신 연도부터 거슬러 올라간 연도 수
+
+# 수집 블록. dims에는 각 dataflow의 차원 id별로 코드나 코드 묶음 이름을 적는다.
+# 적지 않은 차원은 전체를 받는다. years는 all(전체 기간) 또는 partner(상대국 분석 연도).
 blocks:
-  # 1) 국가 × 산업 × 연도 (상대국 = 세계)
-  country_industry:
-    measures: [
-      EXGR, IMGR, EXGR_INT, EXGR_DVA, EXGR_FVA, VALU, FFD_DVA, DFD_FVA,
-      EXGR_DVASH, EXGR_FVASH, EXGR_DVAFXSH
-    ]
-    areas: [economies, aggregates]
-    partners: [world]
-    activities: [detail, aggregates]
-    start_year: 1995
+  # 국가 × 산업 수준값 (상대국 = 세계, 백만 달러)
+  levels:
+    flow: MAINLV
+    years: all
+    dims:
+      MEASURE: [EXGR, IMGR, EXGR_INT, EXGR_DVA, EXGR_FVA, VALU, FFD_DVA, DFD_FVA]
+      REF_AREA: [economies, aggregates]
+      ACTIVITY: [detail, aggregates]
+      COUNTERPART_AREA: [W]
 
-  # 2) 국가 × 상대국 × 산업 (선택 연도)
-  partner:
-    measures: [EXGR, FFD_DVA, DEXFVApSH, FEXDVApSH]
-    areas: [economies]
-    partners: all
-    activities: [_T, C, C26, C27, C19, C301, C29, C20]
-    benchmark_years: [2000, 2005, 2010, 2015]
-    recent_years: 5                # 최신 연도부터 거슬러 올라간 연도 수를 자동 추가
+  # 국가 × 산업 비중 (총수출 대비 %, UNIT_MEASURE=PT_EXGR 우선)
+  # EXGR_DVA = 국내부가가치 비중, EXGR_FVA = 후방 참여율, FEXGR_DVA = 전방 참여율
+  shares:
+    flow: MAINSH
+    years: all
+    dims:
+      MEASURE: [EXGR_DVA, EXGR_FVA, FEXGR_DVA]
+      REF_AREA: [economies, aggregates]
+      ACTIVITY: [detail, aggregates]
+      COUNTERPART_AREA: [W]
+    rename: {EXGR_DVA: EXGR_DVASH, EXGR_FVA: EXGR_FVASH, FEXGR_DVA: EXGR_DVAFXSH}
+    preferred_unit: PT_EXGR
+
+  # 수출 대상국별 총수출과 최종수요 부가가치
+  destination:
+    flow: MAINLV
+    years: partner
+    dims:
+      MEASURE: [EXGR, FFD_DVA]
+      REF_AREA: [economies]
+      ACTIVITY: [partner]
+      COUNTERPART_AREA: [economies]
+
+  # 원천 경제별 부가가치 (후방). 수출 경제 × 수출 산업의 총수출에 들어간 원천 경제의 부가가치
+  origin_backward:
+    flow: EXGRVA
+    years: partner
+    dims:
+      VALUE_ADDED_SOURCE_AREA: [economies]
+      VALUE_ADDED_SOURCE_ACTIVITY: [_T]
+      EXPORTING_AREA: [economies]
+      EXPORTING_ACTIVITY: [partner]
+
+  # 원천 산업의 부가가치가 상대 경제 수출에 체화된 크기 (전방)
+  origin_forward:
+    flow: EXGRVA
+    years: partner
+    dims:
+      VALUE_ADDED_SOURCE_AREA: [economies]
+      VALUE_ADDED_SOURCE_ACTIVITY: [partner]
+      EXPORTING_AREA: [economies]
+      EXPORTING_ACTIVITY: [_T]

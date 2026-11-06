@@ -69,14 +69,35 @@ class Builder:
         self.manifest = json.loads((data_dir / "manifest.json").read_text(encoding="utf-8"))
         cl_path = data_dir / "codelists.json"
         self.codelists = json.loads(cl_path.read_text(encoding="utf-8")) if cl_path.exists() else {}
-        # 실제 코드 -> 설정상 이름 (대소문자 차이 흡수)
-        self.canon = {v["code"]: k for k, v in self.manifest.get("measures", {}).items()}
         self.qa: dict = {"checks": []}
 
     # ------------------------------------------------------------- loading
+    def _read(self, block: str, cols: dict) -> pd.DataFrame:
+        """수집 블록 parquet을 읽어 차원 열 이름을 표준 이름(area, partner, measure, activity)으로 바꾼다."""
+        path = self.data_dir / f"tiva_{block}.parquet"
+        if not path.exists():
+            log.warning("%s 없음", path.name)
+            return pd.DataFrame(columns=["area", "partner", "measure", "activity", "year", "value"])
+        df = pd.read_parquet(path).rename(columns=cols)
+        return df
+
     def load(self):
-        ci = pd.read_parquet(self.data_dir / "tiva_country_industry.parquet")
-        ci["measure"] = ci["measure"].map(lambda m: self.canon.get(m, m))
+        main_cols = {"REF_AREA": "area", "COUNTERPART_AREA": "partner", "MEASURE": "measure", "ACTIVITY": "activity"}
+        keep = ["area", "partner", "measure", "activity", "year", "value"]
+        ci = self._read("levels", main_cols)[keep]
+        sh = self._read("shares", main_cols)
+        if not sh.empty:
+            blk = self.cfg["blocks"]["shares"]
+            pref = blk.get("preferred_unit")
+            parts = []
+            for m, g in sh.groupby("measure"):
+                units = g["UNIT_MEASURE"].value_counts() if "UNIT_MEASURE" in g else pd.Series(dtype=int)
+                u = pref if pref in units.index else (units.index[0] if len(units) else None)
+                parts.append(g[g["UNIT_MEASURE"] == u] if u is not None else g)
+                self.qa.setdefault("share_units", {})[str(m)] = {"used": u, "available": units.index.tolist()}
+            sh = pd.concat(parts, ignore_index=True)
+            sh["measure"] = sh["measure"].map(lambda m: blk.get("rename", {}).get(m, m))
+            ci = pd.concat([ci, sh[keep]], ignore_index=True)
         world = self.cfg["codes"]["world"]
         partners = ci["partner"].value_counts()
         if world not in partners.index and len(partners):
@@ -121,10 +142,15 @@ class Builder:
         log.info("국가×산업: 경제 %d, 집계 %d, 산업 %d, 연도 %d~%d", len(self.econ), len(self.aggs), len(self.acts),
                  self.years[0], self.years[-1])
 
-        pa_path = self.data_dir / "tiva_partner.parquet"
-        self.pa = pd.read_parquet(pa_path) if pa_path.exists() else pd.DataFrame()
-        if not self.pa.empty:
-            self.pa["measure"] = self.pa["measure"].map(lambda m: self.canon.get(m, m))
+        # 상대국 자료 (모두 백만 달러). 비중은 partner_tables에서 총수출로 나눠 계산한다
+        dest = self._read("destination", main_cols)[keep]
+        back = self._read("origin_backward", {"EXPORTING_AREA": "area", "VALUE_ADDED_SOURCE_AREA": "partner",
+                                              "EXPORTING_ACTIVITY": "activity"})
+        back = back.assign(measure="FVA_SRC")[keep] if not back.empty else back.reindex(columns=keep)
+        fwd = self._read("origin_forward", {"VALUE_ADDED_SOURCE_AREA": "area", "EXPORTING_AREA": "partner",
+                                            "VALUE_ADDED_SOURCE_ACTIVITY": "activity"})
+        fwd = fwd.assign(measure="DVA_FX")[keep] if not fwd.empty else fwd.reindex(columns=keep)
+        self.pa = pd.concat([x for x in (dest, back, fwd) if not x.empty] or [dest], ignore_index=True)
 
     # ------------------------------------------------------------- derive
     def derive(self):
@@ -210,7 +236,7 @@ class Builder:
         pki = {k: i for i, k in enumerate(self.p_acts)}
         shape = (len(self.areas), len(self.p_acts), len(self.p_years), len(self.partners))
         self.P = {}
-        for m in PARTNER_MEASURES:
+        for m in ("EXGR", "FFD_DVA", "FVA_SRC", "DVA_FX"):
             sub = pa[pa["measure"] == m]
             arr = np.full(shape, np.nan)
             if not sub.empty:
@@ -221,29 +247,32 @@ class Builder:
                 arr[a, k, y, p] = sub["value"].to_numpy()
             self.P[m] = arr
 
-        # 상대국별 비중 지표의 기준을 확인해 '총수출 대비 %'로 맞춘다
-        for m, total in (("DEXFVApSH", "EXGR_FVASH"), ("FEXDVApSH", "EXGR_DVAFXSH")):
+        # 원천별 부가가치(백만 달러)를 해당 경제·산업 총수출 대비 %로 바꾼다. 자기 자신은 제외
+        ex = np.stack([self.A["EXGR"][:, self.ki[k], :][:, [self.yi[y] for y in self.p_years]]
+                       for k in self.p_acts], axis=1)            # (area, act, year)
+        self_mask = np.zeros((len(self.areas), len(self.partners)), dtype=bool)
+        for j, p in enumerate(self.partners):
+            if p in self.ai:
+                self_mask[self.ai[p], j] = True
+        for src, dst in (("FVA_SRC", "DEXFVApSH"), ("DVA_FX", "FEXDVApSH")):
+            arr = safe_div(self.P[src], ex[..., None], 100)
+            arr[np.broadcast_to(self_mask[:, None, None, :], arr.shape)] = np.nan
+            self.P[dst] = arr
+
+        # 점검: 원천별 합계가 공식 비중(후방·전방 참여율)과 맞는지
+        for m, total, label in (("DEXFVApSH", "EXGR_FVASH", "후방"), ("FEXDVApSH", "EXGR_DVAFXSH", "전방")):
             arr = self.P[m]
             if np.all(np.isnan(arr)):
                 continue
             tot = np.stack([self.A[total][:, self.ki[k], :][:, [self.yi[y] for y in self.p_years]]
                             for k in self.p_acts], axis=1)
             ssum = np.nansum(arr, axis=3)
-            ratio = safe_div(ssum, tot)[: len(self.econ)]
-            ratio = ratio[np.isfinite(ratio) & (tot[: len(self.econ)] > 0.5)]
-            med = float(np.median(ratio)) if ratio.size else float("nan")
-            sums = ssum[: len(self.econ)][np.isfinite(ssum[: len(self.econ)]) & (ssum[: len(self.econ)] > 0)]
-            med_sum = float(np.median(sums)) if sums.size else float("nan")
-            if 0.8 <= med <= 1.25:
-                basis = "총수출 대비 %"
-            elif 80 <= med_sum <= 120:
-                basis = "합계 100 기준 (총수출 대비 %로 환산)"
-                self.P[m] = arr / 100 * tot[..., None]
-            else:
-                basis = "기준 불명확 (원자료 그대로 사용)"
-            self.check(f"{m} 상대국 합계 / {total} (중앙값) 및 기준", [med, med_sum, basis],
-                       ok=not basis.startswith("기준 불명확"))
-            self.qa[f"{m}_basis"] = basis
+            n = len(self.econ)
+            valid = np.isfinite(tot[:n]) & (tot[:n] > 0.5) & (ssum[:n] > 0)
+            ratio = (ssum[:n] / np.where(valid, tot[:n], np.nan))[valid]
+            med = float(np.median(ratio)) if ratio.size else None
+            self.check(f"원천별 합계 ÷ 공식 {label} 참여율 ({m} / {total}, 중앙값, 1에 가까워야 함)",
+                       med, ok=med is None or 0.9 <= med <= 1.1)
 
         # 지역 합계 (USD 기준으로 더한 뒤 지역 총수출 대비 %로)
         for rid, r in self.regions.items():
@@ -251,8 +280,6 @@ class Builder:
             idx = [self.ai[m] for m in r["members"]]
             for m in ("EXGR", "FFD_DVA"):
                 self.P[m][i] = np.nansum(self.P[m][idx], axis=0)
-            ex = np.stack([self.A["EXGR"][:, self.ki[k], :][:, [self.yi[y] for y in self.p_years]]
-                           for k in self.p_acts], axis=1)        # (area, act, year)
             for m in ("DEXFVApSH", "FEXDVApSH"):
                 usd = np.nansum(self.P[m][idx] / 100 * ex[idx][..., None], axis=0)
                 self.P[m][i] = safe_div(usd, ex[i][..., None], 100)
@@ -284,7 +311,8 @@ class Builder:
             "fetched_at": self.manifest.get("fetched_at"),
             "edition": self.manifest.get("edition"),
             "flows": self.manifest.get("flows", []),
-            "missing_measures": self.manifest.get("missing_measures", []),
+            "missing_measures": sorted({c for b in self.manifest.get("missing_codes", {}).values()
+                                        for d, cs in b.items() if d == "MEASURE" for c in cs}),
             "years": self.years, "latest": self.latest,
             "partner_years": self.p_years, "partner_acts": getattr(self, "p_acts", []),
             "economies": [e for e in self.econ if e != self.cfg["codes"]["rest_of_world"]],

@@ -64,7 +64,7 @@ for flow_id in (sys.argv[1].split(",") if len(sys.argv) > 1 and sys.argv[1] else
         print(rd.content[:900].decode("utf-8", "replace"))
         if rd.ok:
             try:
-                df = read_sdmx_csv(path, fs)
+                df = read_sdmx_csv(path, fs.dims)
                 print(" 해석 결과", len(df), "행\n", df.head(8).to_string())
             except Exception as e:  # noqa: BLE001
                 print(" CSV 해석 실패", e)
