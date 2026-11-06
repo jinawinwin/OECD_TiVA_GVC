@@ -113,7 +113,7 @@ DVA = EXGR - FVA
 LV = {"EXGR": EXGR, "EXGR_FVA": FVA, "EXGR_DVA": DVA, "IMGR": EXGR * 0.93, "EXGR_INT": EXGR * 0.56,
       "EXGR_FNL": EXGR * 0.44, "VALU": EXGR * 1.8, "PROD": EXGR * 3.1, "FFD_DVA": DVA * 0.72, "DFD_FVA": FVA * 0.8}
 SH = {("EXGR_DVA", "PT_EXGR"): DVA / EXGR * 100, ("EXGR_FVA", "PT_EXGR"): FVA / EXGR * 100,
-      ("FEXGR_DVA", "PT_EXGR"): DVAFX / EXGR * 100,
+      ("FEXGR_DVA", "PT_EXGR_T"): DVAFX / EXGR * 100,
       ("EXGR_DVA", "PT_VA"): DVA / LV["VALU"] * 100}          # 단위 선택을 시험하기 위한 다른 기준
 pw = size[None, :] * np.exp(rng.normal(0, 0.8, (nE, nE)))     # 원천·상대국 가중치 (자기 자신 0)
 np.fill_diagonal(pw, 0)
@@ -145,7 +145,14 @@ def value(flow, c, yi):
     if flow.endswith("EXGRVA"):
         s, sa, e, ea = (c["VALUE_ADDED_SOURCE_AREA"], c["VALUE_ADDED_SOURCE_ACTIVITY"],
                         c["EXPORTING_AREA"], c["EXPORTING_ACTIVITY"])
-        if s not in EI or e not in EI:
+        if s not in EI:
+            return None
+        if e == "W":            # 세계 수출 = 자국 수출 + 제3국 수출 (제3국 몫 합계 = DVAFX)
+            if ea != "_T":
+                return None
+            own = value(flow, {**c, "EXPORTING_AREA": s}, yi)
+            return None if own is None else own + DVAFX[EI[s], KI[sa], yi]
+        if e not in EI:
             return None
         if sa == "_T":          # 후방: 수출 경제 e(산업 ea)의 총수출에 들어간 원천 s의 부가가치
             ie, ke = EI[e], KI[ea]

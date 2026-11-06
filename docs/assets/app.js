@@ -699,7 +699,7 @@
 
         const fw = pb.data.FEXDVApSH[act][pyi] || [];
         const fwRank = pb.partners.map((p, i) => ({ p, v: fw[i] })).filter(o => ok(o.v) && o.p !== base).sort((a, b) => b.v - a.v);
-        const c6 = card({ span: 6, title: `${AL(base)} 부가가치가 체화된 제3국 수출 (${py}년)`, sub: '전방 연계 상위 10개 수출 경제, 총수출 대비 %' });
+        const c6 = card({ span: 6, title: `${AL(base)} 부가가치가 체화된 제3국 수출 (${py}년)`, sub: '전방 연계 상위 10개 수출 경제, 원천 산업 기준, 해당 산업 총수출 대비 %' });
         grid.append(c6.node);
         if (fwRank.length) {
           hbarChart(c6.chart, { cats: fwRank.slice(0, 10).map(o => ({ code: o.p, label: AL(o.p) })), series: [{ name: '전방 연계', color: t.series[0], data: fwRank.slice(0, 10).map(o => o.v) }] });
@@ -852,7 +852,7 @@
 
       const fw = pk.data.FEXDVApSH[act][pyi] || [];
       const fwRank = pk.partners.map((p, i) => ({ p, v: fw[i] })).filter(o => ok(o.v) && o.p !== K).sort((a, b) => b.v - a.v);
-      const c8 = card({ span: 5, title: `한국 부가가치가 체화된 제3국 수출 (${py}년)`, sub: '전방 연계 상위 10개 경제, 한국 총수출 대비 %', size: 'tall' });
+      const c8 = card({ span: 5, title: `한국 부가가치가 체화된 제3국 수출 (${py}년)`, sub: '전방 연계 상위 10개 경제, 원천 산업 기준, 한국 해당 산업 총수출 대비 %', size: 'tall' });
       grid.append(c8.node);
       hbarChart(c8.chart, { cats: fwRank.slice(0, 10).map(o => ({ code: o.p, label: AL(o.p) })), series: [{ name: '전방 연계', color: t.series[0], data: fwRank.slice(0, 10).map(o => o.v) }] });
       c8.table([{ key: 'name', label: '수출 경제', left: true }, { key: 'v', label: '한국 총수출 대비', fmt: fmtPct }], fwRank.map(o => ({ name: AL(o.p), v: o.v })), { sortKey: 'v' });
@@ -1012,14 +1012,14 @@
       el('h3', { text: '지표 정의' }),
       dl([
         ['후방 참여율', '총수출에 포함된 해외부가가치의 비중 (Principal Indicators, shares의 EXGR_FVA, 단위 PT_EXGR). 수출 생산에서 수입 중간재에 의존하는 정도와 연관됩니다.'],
-        ['전방 참여율', '자국 부가가치가 상대국의 수출에 다시 체화된 크기를 자국 총수출 대비로 나타낸 값 (FEXGR_DVA, 단위 PT_EXGR). 다른 경제의 수출 생산에 중간재를 공급하는 정도와 연관됩니다.'],
-        ['GVC 참여율', '후방 참여율과 전방 참여율의 합.'],
+        ['전방 참여율', '자국(산업별 화면에서는 해당 산업)이 창출한 부가가치 중 제3국의 수출에 체화된 부분(IV)을 총수출(해당 산업 총수출) 대비로 나타낸 값. Koopman et al. (2010)의 방식으로, EXGRVA에서 세계 수출에 체화된 몫과 자국 수출에 체화된 몫의 차이로 계산합니다. 전 산업 값은 OECD 공식 FEXGR_DVA와 같으며 품질 점검에서 확인합니다. OECD가 제공하는 산업별 FEXGR_DVA는 외국의 해당 산업 수출에 체화된 자국 부가가치를 뜻하므로 여기서는 쓰지 않습니다.'],
+        ['GVC 참여율', '후방 참여율과 전방 참여율의 합. 산업별로도 두 값의 분모가 해당 산업 총수출로 같아 더할 수 있습니다. 직접 수출이 작고 다른 산업의 수출을 거쳐 간접적으로 참여하는 산업(광업, 사업서비스 등)은 전방 참여율이 100%를 넘을 수 있습니다.'],
         ['국내부가가치 비중', '총수출에 포함된 국내부가가치의 비중 (EXGR_DVA, 단위 PT_EXGR). 후방 참여율과 합하면 100%입니다.'],
         ['중간재 수출 비중', '중간재 총수출(EXGR_INT)을 총수출(EXGR)로 나눈 값.'],
         ['세계 수출 점유율', '해당 산업에서 개별 경제의 총수출을 TiVA 개별 경제(기타 세계 포함) 총수출 합계로 나눈 값.'],
         ['부가가치 기준 RCA', '(경제의 산업 수출 국내부가가치 / 경제 전체 수출 국내부가가치) ÷ (세계 산업 수출 국내부가가치 / 세계 전체 수출 국내부가가치). 1보다 크면 그 산업 수출에 상대적으로 특화된 것으로 봅니다.'],
         ['해외부가가치 원천', 'Origin of value added in gross exports(EXGRVA)에서 원천 산업 전체(_T)를 기준으로, 수출 경제·산업의 총수출에 들어간 원천 경제별 부가가치를 그 총수출로 나눈 값 (%).'],
-        ['전방 연계', 'EXGRVA에서 자국 해당 산업의 부가가치가 상대 경제의 전체 수출에 체화된 크기를 자국 해당 산업 총수출로 나눈 값 (%). 상대 경제별 합계는 전방 참여율과 같아야 하며, 방법론의 품질 점검에서 확인합니다.'],
+        ['전방 연계 (상대 경제별)', 'EXGRVA에서 자국 해당 산업이 창출한 부가가치가 상대 경제의 수출에 체화된 크기를 자국 해당 산업 총수출로 나눈 값 (%). 상대 경제별 합계는 전방 참여율과 같으며 품질 점검에서 확인합니다.'],
         ['최종수요 부가가치 (FFD_DVA)', '상대국 최종수요에 체화된 자국 부가가치. 총수출 기준 상대국 구성과 비교하면 중간 경유지를 거친 부가가치 흐름을 가늠할 수 있습니다.'],
         ['집중도 (HHI, 상위 3개 점유율)', '산업별 세계 총수출에서 개별 경제가 차지하는 비중으로 계산합니다. 기타 세계(WXD)는 하나의 경제로 보지 않아 제외합니다.'],
       ]),

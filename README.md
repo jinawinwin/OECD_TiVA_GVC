@@ -50,7 +50,8 @@ OECD는 TiVA dataflow를 기본 주소(`sdmx.oecd.org/public/rest`)에 외부 �
 | 블록 | dataflow | 내용 |
 |---|---|---|
 | levels | Principal Indicators, levels (MAINLV) | 국가 × 산업 × 연도 수준값, 상대국 세계 (EXGR, IMGR, EXGR_INT, EXGR_DVA, EXGR_FVA, VALU, FFD_DVA, DFD_FVA) |
-| shares | Principal Indicators, shares (MAINSH) | 총수출 대비 비중, 단위 PT_EXGR (EXGR_DVA, EXGR_FVA, FEXGR_DVA) |
+| shares | Principal Indicators, shares (MAINSH) | 총수출 대비 비중 (EXGR_DVA, EXGR_FVA, FEXGR_DVA). FEXGR_DVA의 산업별 값은 외국의 해당 산업 수출에 체화된 자국 부가가치라서 점검용으로만 사용 |
+| forward_source | EXGRVA | 원천 경제·산업의 부가가치가 세계 수출과 자국 수출에 체화된 크기 (산업별 전방 참여율 계산용) |
 | destination | MAINLV | 수출 대상국별 총수출과 최종수요 부가가치 |
 | origin_backward | Origin of value added in gross exports (EXGRVA) | 수출 경제·산업의 총수출에 들어간 원천 경제별 부가가치 |
 | origin_forward | EXGRVA | 원천 경제·산업의 부가가치가 상대 경제 수출에 체화된 크기 |
@@ -85,7 +86,7 @@ R에서는 `arrow::read_parquet()` 로 읽을 수 있고, Stata에서는 `countr
 | 지표 | 정의 |
 |---|---|
 | 후방 참여율 | 총수출 중 해외부가가치 비중 (EXGR_FVA, PT_EXGR) |
-| 전방 참여율 | 제3국 수출에 체화된 자국 부가가치, 총수출 대비 (FEXGR_DVA, PT_EXGR) |
+| 전방 참여율 | 자국(해당 산업)이 창출한 부가가치 중 제3국 수출에 체화된 부분(IV), 총수출(해당 산업 총수출) 대비. Koopman et al. (2010) 방식, EXGRVA로 계산하며 전 산업 값은 공식 FEXGR_DVA와 같음 |
 | GVC 참여율 | 후방 참여율 + 전방 참여율 |
 | 세계 수출 점유율 | 개별 경제(기타 세계 포함) 총수출 합계 대비 |
 | 부가가치 기준 RCA | (경제의 산업 수출 DVA / 경제 전체 수출 DVA) ÷ (세계 산업 수출 DVA / 세계 전체 수출 DVA) |

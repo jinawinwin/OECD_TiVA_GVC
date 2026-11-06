@@ -171,9 +171,24 @@ class Fetcher:
         def key_len(s):
             return len(self.client.build_key(fs, s))
 
+        bases = [sel]
+        pair = block.get("pair")
+        if pair:   # 원천 경제 묶음마다 같은 경제 + extra(W)만 수출 경제로 요청해 대각 성분만 받는다
+            d_src, d_exp = pair["dims"]
+            extra = [fs.resolve_code(d_exp, c) for c in pair.get("extra", []) if fs.resolve_code(d_exp, c)]
+            g = int(pair.get("group_size", 6))
+            src_codes = sel[d_src]
+            bases = []
+            for i in range(0, len(src_codes), g):
+                grp = src_codes[i:i + g]
+                b = dict(sel)
+                b[d_src] = grp
+                b[d_exp] = [c for c in grp if fs.has_code(d_exp, c)] + extra
+                bases.append(b)
         queue = []
-        for s, e in spans:
-            queue += plan_chunks(sel, s, e, src["max_obs_per_query"], key_len, src["max_key_length"])
+        for base in bases:
+            for s, e in spans:
+                queue += plan_chunks(base, s, e, src["max_obs_per_query"], key_len, src["max_key_length"])
         log.info("[%s] %s, 연도 %s, 요청 %d건 예정", name, flow.id, spans, len(queue))
         frames, done = [], 0
         while queue:
@@ -194,6 +209,9 @@ class Fetcher:
         dims = [c for c in out.columns if c not in ("year", "value", "unit_mult")]
         if block.get("years") == "partner":
             out = out[out["year"].isin(self.partner_years())]
+        if pair and not out.empty:
+            d_src, d_exp = pair["dims"]
+            out = out[(out[d_exp] == out[d_src]) | out[d_exp].isin(pair.get("extra", []))]
         out = out.drop_duplicates(subset=dims + ["year"]).sort_values(dims + ["year"]).reset_index(drop=True)
         for c in dims:
             out[c] = out[c].astype(str)

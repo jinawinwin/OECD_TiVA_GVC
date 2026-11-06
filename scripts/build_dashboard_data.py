@@ -98,6 +98,15 @@ class Builder:
             sh = pd.concat(parts, ignore_index=True)
             sh["measure"] = sh["measure"].map(lambda m: blk.get("rename", {}).get(m, m))
             ci = pd.concat([ci, sh[keep]], ignore_index=True)
+        # 원천 산업 부가가치 중 제3국 수출에 체화된 부분 IV = 세계(W) 수출 체화분 - 자국 수출 체화분
+        fs_ = self._read("forward_source", {})
+        if not fs_.empty:
+            src, sact, exa = "VALUE_ADDED_SOURCE_AREA", "VALUE_ADDED_SOURCE_ACTIVITY", "EXPORTING_AREA"
+            w = fs_[fs_[exa] == "W"].set_index([src, sact, "year"])["value"]
+            own = fs_[fs_[exa] == fs_[src]].set_index([src, sact, "year"])["value"]
+            iv = (w - own.reindex(w.index).fillna(0)).rename("value").reset_index()
+            iv = iv.rename(columns={src: "area", sact: "activity"}).assign(measure="IV", partner="W")
+            ci = pd.concat([ci, iv[keep]], ignore_index=True)
         world = self.cfg["codes"]["world"]
         partners = ci["partner"].value_counts()
         if world not in partners.index and len(partners):
@@ -137,7 +146,7 @@ class Builder:
             arr = np.full(shape, np.nan)
             arr[a_idx[ok], k_idx[ok], y_idx[ok]] = wide[m].to_numpy()[ok]
             self.A[m] = arr
-        for m in LEVELS + ["EXGR_DVASH", "EXGR_FVASH", "EXGR_DVAFXSH"]:
+        for m in LEVELS + ["IV", "EXGR_DVASH", "EXGR_FVASH", "EXGR_DVAFXSH"]:
             self.A.setdefault(m, np.full(shape, np.nan))
         log.info("국가×산업: 경제 %d, 집계 %d, 산업 %d, 연도 %d~%d", len(self.econ), len(self.aggs), len(self.acts),
                  self.years[0], self.years[-1])
@@ -162,13 +171,23 @@ class Builder:
         for rid, r in self.regions.items():
             i = self.ai[rid]
             idx = [self.ai[m] for m in r["members"]]
-            for m in LEVELS:
+            for m in LEVELS + ["IV"]:
                 A[m][i] = np.nansum(A[m][idx], axis=0)
                 A[m][i][np.all(np.isnan(A[m][idx]), axis=0)] = np.nan
-            ex = A["EXGR"][idx]
-            fwd = A["EXGR_DVAFXSH"][idx]
-            w = np.where(np.isfinite(fwd) & np.isfinite(ex), ex, 0)
-            A["EXGR_DVAFXSH"][i] = safe_div(np.nansum(np.nan_to_num(fwd) * w, axis=0), w.sum(axis=0))
+
+        # 전방 참여율 = IV / 총수출 (Koopman et al. 2010). IV가 없는 TiVA 집계는 전 산업에 한해 공식 FEXGR_DVA를 쓴다
+        t_idx = self.ki.get(self.cfg["codes"]["total_activity"])
+        fwd = safe_div(A["IV"], A["EXGR"], 100)
+        if t_idx is not None:
+            off_t = A["EXGR_DVAFXSH"][:, t_idx, :]
+            fwd[:, t_idx, :] = np.where(np.isfinite(fwd[:, t_idx, :]), fwd[:, t_idx, :], off_t)
+            n = len(self.econ)
+            both = np.isfinite(fwd[:n, t_idx, :]) & np.isfinite(off_t[:n]) & (off_t[:n] > 0.5)
+            ratio = (fwd[:n, t_idx, :] / np.where(both, off_t[:n], np.nan))[both]
+            self.check("전방 참여율 계산값(IV/총수출) ÷ 공식 FEXGR_DVA, 전 산업 (중앙값, 1에 가까워야 함)",
+                       float(np.median(ratio)) if ratio.size else None,
+                       ok=bool(ratio.size == 0 or 0.97 <= np.median(ratio) <= 1.03))
+        A["EXGR_DVAFXSH"] = fwd
 
         comp_back = safe_div(A["EXGR_FVA"], A["EXGR"], 100)
         comp_dva = safe_div(A["EXGR_DVA"], A["EXGR"], 100)
@@ -204,11 +223,12 @@ class Builder:
         A["rca"] = safe_div(safe_div(A["EXGR_DVA"], own_tot), world_share[None])
         if "W" in self.ai:
             wi = self.ai["W"]
-            off = A["EXGR"][wi]
-            rel = np.abs(safe_div(off - w_ex, w_ex, 100))
+            off = A["VALU"][wi]
+            rel = np.abs(safe_div(off - self.world["VALU"], self.world["VALU"], 100))
             rel = rel[np.isfinite(rel)]
-            self.check("TiVA 세계(W) 총수출과 개별 경제 합계의 차이 (%, 중앙값)",
-                       float(np.median(rel)) if rel.size else None, ok=bool(rel.size == 0 or np.median(rel) < 1))
+            if rel.size:
+                self.check("TiVA 세계(W) 부가가치와 개별 경제 합계의 차이 (%, 중앙값)",
+                           float(np.median(rel)), ok=bool(np.median(rel) < 1))
 
         # 주요국: 부가가치(VALU, 전 산업) 상위 N
         valu = A["VALU"][:n_e, t, self.yi[self.latest]]
@@ -259,20 +279,22 @@ class Builder:
             arr[np.broadcast_to(self_mask[:, None, None, :], arr.shape)] = np.nan
             self.P[dst] = arr
 
-        # 점검: 원천별 합계가 공식 비중(후방·전방 참여율)과 맞는지
-        for m, total, label in (("DEXFVApSH", "EXGR_FVASH", "후방"), ("FEXDVApSH", "EXGR_DVAFXSH", "전방")):
-            arr = self.P[m]
-            if np.all(np.isnan(arr)):
+        # 점검: 원천별 합계가 공식 비중과 맞는지. 후방은 모든 산업, 전방은 전 산업(_T)에서 비교한다.
+        # 산업별 전방 연계는 '원천 산업' 기준이라 '수출 산업' 기준인 공식 산업별 전방 참여율과 개념이 다르다.
+        n = len(self.econ)
+        for m, total, label, acts in (("DEXFVApSH", "EXGR_FVASH", "후방", self.p_acts),
+                                      ("FEXDVApSH", "fwd", "전방", self.p_acts)):
+            ks = [self.p_acts.index(k) for k in acts if k in self.p_acts]
+            if not ks or np.all(np.isnan(self.P[m])):
                 continue
-            tot = np.stack([self.A[total][:, self.ki[k], :][:, [self.yi[y] for y in self.p_years]]
-                            for k in self.p_acts], axis=1)
-            ssum = np.nansum(arr, axis=3)
-            n = len(self.econ)
-            valid = np.isfinite(tot[:n]) & (tot[:n] > 0.5) & (ssum[:n] > 0)
-            ratio = (ssum[:n] / np.where(valid, tot[:n], np.nan))[valid]
+            tot = np.stack([self.A[total][:n, self.ki[self.p_acts[k]], :][:, [self.yi[y] for y in self.p_years]]
+                            for k in ks], axis=1)
+            ssum = np.nansum(self.P[m][:n][:, ks], axis=3)
+            valid = np.isfinite(tot) & (tot > 0.5) & (ssum > 0)
+            ratio = (ssum / np.where(valid, tot, np.nan))[valid]
             med = float(np.median(ratio)) if ratio.size else None
-            self.check(f"원천별 합계 ÷ 공식 {label} 참여율 ({m} / {total}, 중앙값, 1에 가까워야 함)",
-                       med, ok=med is None or 0.9 <= med <= 1.1)
+            self.check(f"원천별 합계 ÷ 공식 {label} 참여율 (중앙값, 1에 가까워야 함)",
+                       med, ok=med is None or 0.97 <= med <= 1.03)
 
         # 지역 합계 (USD 기준으로 더한 뒤 지역 총수출 대비 %로)
         for rid, r in self.regions.items():

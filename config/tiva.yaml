@@ -32,7 +32,7 @@ codes:
 activities:
   detail: [
     A01, A02, A03, B05, B06, B07, B08, B09,
-    C10T12, C13T15, C16, C17_18, C19, C20, C21, C22, C23, C24A, C24B, C25, C26, C27, C28, C29,
+    C10T12, C13T15, C16, C17_18, C19, C20, C21, C22, C23, C24, C25, C26, C27, C28, C29,
     C301, C302T309, C31T33,
     D, E, F, G, H49, H50, H51, H52, H53, I, J58T60, J61, J62_63, K, L, M, N, O, P, Q, R, S, T
   ]
@@ -57,7 +57,8 @@ blocks:
       COUNTERPART_AREA: [W]
 
   # 국가 × 산업 비중 (총수출 대비 %, UNIT_MEASURE=PT_EXGR 우선)
-  # EXGR_DVA = 국내부가가치 비중, EXGR_FVA = 후방 참여율, FEXGR_DVA = 전방 참여율
+  # EXGR_DVA = 국내부가가치 비중, EXGR_FVA = 후방 참여율, FEXGR_DVA = 전방 참여율(전 산업).
+  # FEXGR_DVA의 산업별 값은 '외국의 해당 산업 수출'에 체화된 자국 부가가치이므로 점검용으로만 쓴다.
   shares:
     flow: MAINSH
     years: all
@@ -68,6 +69,18 @@ blocks:
       COUNTERPART_AREA: [W]
     rename: {EXGR_DVA: EXGR_DVASH, EXGR_FVA: EXGR_FVASH, FEXGR_DVA: EXGR_DVAFXSH}
     preferred_unit: PT_EXGR
+
+  # 원천 산업 기준 전방 연계 (Koopman et al. 2010의 IV). 원천 산업 부가가치가 세계(W) 수출과 자국 수출에
+  # 체화된 크기를 받아, 그 차이를 제3국 수출에 체화된 부가가치로 쓴다. pair는 원천 경제와 같은 경제만 짝지어 받는다.
+  forward_source:
+    flow: EXGRVA
+    years: all
+    dims:
+      VALUE_ADDED_SOURCE_AREA: [economies]
+      VALUE_ADDED_SOURCE_ACTIVITY: [detail, aggregates]
+      EXPORTING_AREA: [economies]
+      EXPORTING_ACTIVITY: [_T]
+    pair: {dims: [VALUE_ADDED_SOURCE_AREA, EXPORTING_AREA], extra: [W], group_size: 6}
 
   # 수출 대상국별 총수출과 최종수요 부가가치
   destination:
