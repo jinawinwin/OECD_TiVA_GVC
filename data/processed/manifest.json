@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-11-06T10:19:48+00:00",
+ "fetched_at": "2026-11-06T11:02:57+00:00",
  "source": "https://sdmx.oecd.org/public/rest",
  "agency": "OECD.STI.PIE",
  "edition": 2025,
@@ -49,7 +49,7 @@
   },
   "forward_source": {
    "flow": "DSD_TIVA_EXGRVA@DF_EXGRVA",
-   "rows": 254016,
+   "rows": 127008,
    "measures": [
     "EXGRVA"
    ]
@@ -90,7 +90,7 @@
   2021,
   2022
  ],
- "requests": 48,
+ "requests": 72,
  "signature": {
   "flows": [
    [
@@ -119,12 +119,12 @@
     "Trade in Value Added (TiVA) 2025 edition: Principal Indicators, shares"
    ]
   ],
-  "config": "93ca0267b1eb6815"
+  "config": "21d2b3f817456d31"
  },
  "hash": {
   "levels": "2d504c35ef1fff98",
   "shares": "8a882af5ebbc1d70",
-  "forward_source": "4a618d3fc3d17028",
+  "forward_source": "28dc89b1654f6ac4",
   "destination": "b8cb4cea28809a59",
   "origin_backward": "cae34e78a298f82f",
   "origin_forward": "55d5ccf885121729"
