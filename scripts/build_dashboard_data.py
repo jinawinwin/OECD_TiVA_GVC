@@ -308,12 +308,16 @@ class Builder:
         ko_act = self.grp.get("activity_labels", {})
         en_area = self.codelists.get("area", {})
         en_act = self.codelists.get("activity", {})
+        en_area_over = self.grp.get("area_labels_en", {})
+        en_act_short = self.grp.get("activity_labels_en", {})
         area = {a: ko_area.get(a) or en_area.get(a) or a for a in self.econ + self.aggs}
+        area_en = {a: en_area_over.get(a) or en_area.get(a) or a for a in self.econ + self.aggs}
         for rid, r in self.regions.items():
             area[rid] = r["label"].replace(" 제조업", "") + " (회원국 합계)"
+            area_en[rid] = r.get("label_en", r["label"]).replace(" manufacturing", "") + " (sum of members)"
         act = {k: ko_act.get(k) or en_act.get(k) or k for k in self.acts}
-        return {"area": area, "activity": act, "area_en": {a: en_area.get(a, a) for a in self.econ + self.aggs},
-                "activity_en": {k: en_act.get(k, k) for k in self.acts}}
+        act_en = {k: en_act_short.get(k) or en_act.get(k) or k for k in self.acts}
+        return {"area": area, "activity": act, "area_en": area_en, "activity_en": act_en}
 
     def write(self):
         if self.out.exists():
@@ -336,7 +340,8 @@ class Builder:
             "economies": [e for e in self.econ if e != self.cfg["codes"]["rest_of_world"]],
             "aggregates": self.aggs, "acts": self.acts, "detail_acts": detail,
             "top": self.top,
-            "regions": {rid: {"id": r["id"], "label": r["label"], "members": r["members"],
+            "regions": {rid: {"id": r["id"], "label": r["label"], "label_en": r.get("label_en"), "note_en": r.get("note_en"),
+                              "subgroup_labels_en": r.get("subgroup_labels_en"), "members": r["members"],
                               "official": r.get("official_aggregate") if r.get("official_aggregate") in self.ai else None,
                               "default_activity": r.get("default_activity", "_T"), "note": r.get("note"),
                               "subgroups": r.get("subgroups")} for rid, r in self.regions.items()},

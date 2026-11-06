@@ -6,22 +6,29 @@ top_n_by_value_added: 20      # 주요국 비교 = TiVA 부가가치(VALU, 전 �
 regions:
   EU:
     label: EU 제조업
+    label_en: EU manufacturing
     official_aggregate: EU27_2020
     default_activity: C
     members: [AUT, BEL, BGR, HRV, CYP, CZE, DNK, EST, FIN, FRA, DEU, GRC, HUN, IRL, ITA, LVA, LTU,
               LUX, MLT, NLD, POL, PRT, ROU, SVK, SVN, ESP, SWE]
   MIDEAST:
     label: 중동
+    label_en: Middle East
     default_activity: _T
     note: TiVA 2025년판에 포함된 중동 경제와 인접한 이집트, 튀르키예를 포함합니다.
+    note_en: Includes the Middle Eastern economies covered by TiVA 2025 and the neighbouring economies of Egypt and Türkiye.
     members: [ISR, JOR, SAU, ARE, TUR, EGY]
   SOUTHAM:
     label: 남미
+    label_en: South America
     default_activity: _T
     note: 멕시코와 코스타리카는 북미·중미로 분류해 제외했습니다.
+    note_en: Mexico and Costa Rica are classed as North and Central America and are excluded.
     members: [ARG, BRA, CHL, COL, PER]
   ASIA:
     label: 아시아
+    label_en: Asia
+    subgroup_labels_en: {동아시아: East Asia, 동남아시아: South-East Asia, 남아시아: South Asia, 중앙아시아: Central Asia}
     official_aggregate: ASEAN
     default_activity: _T
     subgroups:
@@ -40,21 +47,33 @@ focus_industries:
   - code: C26
     label: 반도체·전자
     note: 컴퓨터·전자·광학기기(ISIC 26) 전체 값입니다. 반도체(ISIC 261)만 따로 분리되지 않습니다.
+    label_en: Semiconductors & electronics
+    note_en: "Whole of computer, electronic and optical products (ISIC 26). Semiconductors (ISIC 261) are not shown separately."
   - code: C27
     label: 이차전지·전기장비
     note: 전기장비(ISIC 27) 전체 값입니다. 축전지(ISIC 272)만 따로 분리되지 않으며, 양극재 등 소재는 C20, 비철금속 제련은 C24(1차 금속)에 속합니다.
+    label_en: Batteries & electrical equipment
+    note_en: "Whole of electrical equipment (ISIC 27). Batteries (ISIC 272) are not shown separately. Cathode and other materials fall under C20, and non-ferrous metal smelting under C24 (basic metals)."
   - code: C19
     label: 정유
     note: 코크스·석유정제품(ISIC 19) 전체 값입니다.
+    label_en: Oil refining
+    note_en: "Whole of coke and refined petroleum products (ISIC 19)."
   - code: C301
     label: 조선
     note: 선박 건조(ISIC 301) 값입니다. 보트 건조를 포함합니다.
+    label_en: Shipbuilding
+    note_en: "Building of ships and boats (ISIC 301)."
   - code: C29
     label: 자동차
     note: 자동차·트레일러(ISIC 29) 전체 값입니다.
+    label_en: Motor vehicles
+    note_en: "Whole of motor vehicles, trailers and semi-trailers (ISIC 29)."
   - code: C20
     label: 화학
     note: 화학물질·화학제품(ISIC 20) 전체 값입니다. 이차전지 소재 일부를 포함합니다.
+    label_en: Chemicals
+    note_en: "Whole of chemicals and chemical products (ISIC 20), which includes part of battery materials."
 
 activity_labels:
   _T: 전 산업
@@ -113,6 +132,71 @@ activity_labels:
   R: 예술·스포츠·여가
   S: 기타 서비스
   T: 가구 내 고용·자가생산
+
+activity_labels_en:
+  _T: All industries
+  A: Agriculture, forestry & fishing
+  B: Mining & quarrying
+  C: Manufacturing
+  BTE: Industry incl. energy
+  D_E: Utilities
+  GTT: Services
+  A01: Agriculture
+  A02: Forestry
+  A03: Fishing & aquaculture
+  B05: Coal mining
+  B06: Crude oil & gas extraction
+  B07: Metal ore mining
+  B08: Other mining
+  B09: Mining support services
+  C10T12: Food, beverages & tobacco
+  C13T15: Textiles, apparel & leather
+  C16: Wood products
+  C17_18: Paper & printing
+  C19: Coke & refined petroleum
+  C20: Chemicals
+  C21: Pharmaceuticals
+  C22: Rubber & plastics
+  C23: Non-metallic minerals
+  C24: Basic metals
+  C25: Fabricated metal products
+  C26: Computers, electronics & optical
+  C27: Electrical equipment
+  C28: Machinery n.e.c.
+  C29: Motor vehicles
+  C301: Shipbuilding
+  C302T309: Other transport equipment
+  C31T33: Furniture, other manufacturing & repair
+  D: Electricity & gas
+  E: Water & waste
+  F: Construction
+  G: Wholesale & retail
+  H49: Land transport
+  H50: Water transport
+  H51: Air transport
+  H52: Warehousing & transport support
+  H53: Postal & courier
+  I: Accommodation & food
+  J58T60: Publishing & broadcasting
+  J61: Telecommunications
+  J62_63: IT & information services
+  K: Finance & insurance
+  L: Real estate
+  M: Professional, scientific & technical
+  N: Administrative & support
+  O: Public administration & defence
+  P: Education
+  Q: Health & social work
+  R: Arts & recreation
+  S: Other services
+  T: Households as employers
+
+# 영문 국가명은 OECD 코드목록 명칭을 쓰고, 아래 항목만 짧게 바꾼다
+area_labels_en:
+  CHN: China
+  LAO: Lao PDR
+  EU27_2020: EU27 (TiVA aggregate)
+  WXD: Rest of the world
 
 area_labels:
   W: 세계

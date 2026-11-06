@@ -16,6 +16,8 @@
   --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
   --seq-0: #cde2fb; --seq-1: #86b6ef; --seq-2: #3987e5; --seq-3: #1c5cab; --seq-4: #0d366b;
   --good: #006300; --bad: #b42e2e;
+  --div-n2: #b42e2e; --div-n1: #f2a3a2; --div-mid: #f0efec; --div-p1: #86b6ef; --div-p2: #1c5cab;
+  --flow: #eb6834;
   --focus: #2a78d6;
   --radius: 10px;
   --font: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
@@ -40,6 +42,8 @@
     --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
     --seq-0: #0d366b; --seq-1: #1c5cab; --seq-2: #3987e5; --seq-3: #86b6ef; --seq-4: #cde2fb;
     --good: #0ca30c; --bad: #e66767;
+    --div-n2: #e66767; --div-n1: #8a3a3a; --div-mid: #383835; --div-p1: #256abf; --div-p2: #86b6ef;
+    --flow: #d95926;
     --focus: #6da7ec;
   }
 }
@@ -62,6 +66,8 @@
   --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
   --seq-0: #0d366b; --seq-1: #1c5cab; --seq-2: #3987e5; --seq-3: #86b6ef; --seq-4: #cde2fb;
   --good: #0ca30c; --bad: #e66767;
+  --div-n2: #e66767; --div-n1: #8a3a3a; --div-mid: #383835; --div-p1: #256abf; --div-p2: #86b6ef;
+  --flow: #d95926;
   --focus: #6da7ec;
 }
 
@@ -216,4 +222,25 @@ table.data .swatch { display: inline-block; width: 10px; height: 3px; border-rad
   .chart { height: 300px; }
   .chart.tall { height: 460px; }
   .tile .t-value { font-size: 22px; }
+}
+
+/* ---------- language tabs ---------- */
+.lang-tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.lang-tab { border: 0; background: transparent; padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--text-secondary); }
+.lang-tab + .lang-tab { border-left: 1px solid var(--border); }
+.lang-tab:hover { background: var(--surface-2); }
+.lang-tab[aria-pressed="true"] { background: var(--surface-2); color: var(--text-primary); font-weight: 650; }
+
+/* ---------- maps ---------- */
+.chart.map { height: 520px; }
+.chart.map-short { height: 420px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; min-height: 34px; }
+.seg button { border: 0; background: var(--surface); padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--text-secondary); }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--text-primary); font-weight: 600; }
+.map-note { margin: 6px 0 0; color: var(--text-muted); font-size: 11.5px; }
+@media (max-width: 640px) {
+  .chart.map { height: 360px; }
+  .chart.map-short { height: 320px; }
+  .header-tools { width: 100%; justify-content: space-between; }
 }

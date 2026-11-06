@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TiVA GVC 대시보드</title>
-  <meta name="description" content="OECD Trade in Value Added(TiVA) 데이터로 본 글로벌 가치사슬 참여, 산업, 한국, 지역별 대시보드">
+  <meta name="description" content="OECD Trade in Value Added (TiVA) global value chain dashboard. 글로벌 가치사슬 참여, 산업, 한국, 지역별 대시보드">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M8 22l5-6 4 3 7-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="assets/style.css">
   <script>
@@ -15,34 +15,41 @@
   <header class="site-header">
     <div class="header-inner">
       <div>
-        <h1 class="site-title">TiVA 글로벌 가치사슬 대시보드</h1>
-        <p class="site-sub" id="edition-line">OECD Trade in Value Added 데이터를 불러오는 중입니다</p>
+        <h1 class="site-title" id="site-title">TiVA 글로벌 가치사슬 대시보드</h1>
+        <p class="site-sub" id="edition-line">OECD Trade in Value Added</p>
       </div>
       <div class="header-tools">
-        <button class="icon-btn" id="theme-btn" type="button" aria-label="화면 밝기 전환">화면 전환</button>
+        <div class="lang-tabs" role="group" aria-label="Language / 언어">
+          <button type="button" class="lang-tab" data-lang="ko" lang="ko">한국어</button>
+          <button type="button" class="lang-tab" data-lang="en" lang="en">English</button>
+        </div>
+        <button class="icon-btn" id="theme-btn" type="button">화면 전환</button>
       </div>
     </div>
   </header>
-  <nav class="site-nav" aria-label="대시보드 영역">
+  <nav class="site-nav" id="site-nav">
     <div class="nav-inner" id="nav">
-      <a href="#top">주요국 비교</a>
-      <a href="#industry">산업별 심층</a>
-      <a href="#korea">한국 GVC</a>
-      <a href="#eu">EU 제조업</a>
-      <a href="#mideast">중동</a>
-      <a href="#southam">남미</a>
-      <a href="#asia">아시아</a>
-      <a href="#method">방법론·데이터</a>
+      <a href="#map" data-ko="세계 지도" data-en="World map">세계 지도</a>
+      <a href="#top" data-ko="주요국 비교" data-en="Major economies">주요국 비교</a>
+      <a href="#industry" data-ko="산업별 심층" data-en="Industries">산업별 심층</a>
+      <a href="#korea" data-ko="한국 GVC" data-en="Korea">한국 GVC</a>
+      <a href="#eu" data-ko="EU 제조업" data-en="EU manufacturing">EU 제조업</a>
+      <a href="#mideast" data-ko="중동" data-en="Middle East">중동</a>
+      <a href="#southam" data-ko="남미" data-en="South America">남미</a>
+      <a href="#asia" data-ko="아시아" data-en="Asia">아시아</a>
+      <a href="#method" data-ko="방법론·데이터" data-en="Methods & data">방법론·데이터</a>
     </div>
   </nav>
   <main id="view" aria-live="polite">
-    <p class="empty">데이터를 불러오는 중입니다.</p>
+    <p class="empty">데이터를 불러오는 중입니다. Loading data.</p>
   </main>
   <footer class="site-footer">
-    <div>자료 OECD Trade in Value Added (TiVA) Database. 수집과 가공은 이 저장소의 GitHub Actions가 자동으로 수행합니다. 지표는 국가·산업 간 연관성을 보여 주며 인과관계를 뜻하지 않습니다.</div>
+    <div id="footer-text"></div>
     <div id="build-line"></div>
   </footer>
   <script src="assets/vendor/echarts.min.js"></script>
+  <script src="assets/vendor/d3-array.min.js"></script>
+  <script src="assets/vendor/d3-geo.min.js"></script>
   <script src="assets/app.js"></script>
 </body>
 </html>
