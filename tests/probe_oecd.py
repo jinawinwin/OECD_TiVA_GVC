@@ -1,64 +1,68 @@
 """OECD SDMX API 응답 형태 진단 (GitHub Actions 'OECD API 진단' 워크플로에서 실행).
 
-구조 조회의 여러 방식에 대해 상태 코드, 형식, 최상위 태그, 요소 개수를 출력하고 응답 원문을 probe_out/에 저장한다.
+1) 기본 주소의 dataflow가 외부 참조인지 확인하고 실제 서비스 주소를 찾는다.
+2) 실제 주소에서 구조를 받아 scripts/sdmx.py 파서로 차원, 코드 수, 제약을 해석한다.
+3) 한국 총수출 등 소량 데이터를 CSV로 받아 열 구성과 첫 줄을 출력한다.
 """
 from __future__ import annotations
 
-import collections
 import sys
 import time
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import requests
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import requests  # noqa: E402
+from sdmx import (CSV_ACCEPT, STRUCT_ACCEPT, Flow, assign_roles, parse_dataflows, parse_structure,  # noqa: E402
+                  read_sdmx_csv)
 
-BASE = "https://sdmx.oecd.org/public/rest"
 AG = "OECD.STI.PIE"
-FLOW = sys.argv[1] if len(sys.argv) > 1 else "DSD_TIVA_MAINLV@DF_MAINLV"
-DSD = FLOW.split("@")[0]
 OUT = Path("probe_out")
 OUT.mkdir(exist_ok=True)
 S = requests.Session()
 S.headers["User-Agent"] = "oecd-tiva-gvc-dashboard/1.0 (probe)"
-XML21 = "application/vnd.sdmx.structure+xml;version=2.1"
-
-CASES = [
-    ("flow_all_partial", f"{BASE}/dataflow/{AG}/{FLOW}/latest", {"references": "all", "detail": "referencepartial"}, XML21),
-    ("flow_all", f"{BASE}/dataflow/{AG}/{FLOW}/latest", {"references": "all"}, XML21),
-    ("flow_all_noaccept", f"{BASE}/dataflow/{AG}/{FLOW}/latest", {"references": "all"}, None),
-    ("flow_desc", f"{BASE}/dataflow/{AG}/{FLOW}/latest", {"references": "descendants"}, XML21),
-    ("dsd_children", f"{BASE}/datastructure/{AG}/{DSD}/latest", {"references": "children"}, XML21),
-    ("avail", f"{BASE}/availableconstraint/{AG},{FLOW},latest/all", {"mode": "available"}, XML21),
-    ("flow_json", f"{BASE}/dataflow/{AG}/{FLOW}/latest", {"references": "all"}, "application/vnd.sdmx.structure+json;version=1.0;charset=utf-8"),
-]
+CAND = {"area": ["REF_AREA"], "partner": ["COUNTERPART_AREA"], "measure": ["MEASURE"], "activity": ["ACTIVITY"]}
 
 
-def local(tag):
-    return tag.rsplit("}", 1)[-1]
+def get(url, params=None, accept=None):
+    time.sleep(7)
+    r = S.get(url, params=params, headers={"Accept": accept} if accept else None, timeout=300)
+    print(f"\nGET {r.url}\n -> HTTP {r.status_code} {r.headers.get('Content-Type')} {len(r.content):,} bytes")
+    return r
 
 
-for name, url, params, accept in CASES:
-    t0 = time.time()
-    try:
-        r = S.get(url, params=params, headers={"Accept": accept} if accept else None, timeout=300)
-    except Exception as e:  # noqa: BLE001
-        print(f"\n### {name} 요청 실패 {e}")
-        continue
-    body = r.content
-    (OUT / f"{name}.txt").write_bytes(body)
-    print(f"\n### {name}  HTTP {r.status_code}  {r.headers.get('Content-Type')}  {len(body):,} bytes  {time.time()-t0:.1f}s")
-    print("URL", r.url)
-    head = body[:600].decode("utf-8", "replace").replace("\n", " ")
-    print("HEAD", head)
-    if body.lstrip().startswith(b"<"):
+r = get("https://sdmx.oecd.org/public/rest/dataflow/OECD.STI.PIE", accept=STRUCT_ACCEPT)
+flows = [f for f in parse_dataflows(r.content, AG) if "TIVA" in f.id.upper()]
+for f in flows:
+    print(" ", f.id, f.version, f.name, "| external:", f.external, "| service:", f.service_base)
+
+for flow_id in sys.argv[1:] or ["DSD_TIVA_MAINLV@DF_MAINLV", "DSD_TIVA_MAINSH@DF_MAINSH"]:
+    f = next(x for x in flows if x.id == flow_id)
+    base = f.service_base or "https://sdmx.oecd.org/public/rest"
+    for params in ({"references": "all", "detail": "referencepartial"}, {"references": "all"}):
+        rs = get(f"{base}/dataflow/{AG}/{f.id}/{f.version}", params, STRUCT_ACCEPT)
+        (OUT / f"{f.id}_{len(params)}.xml").write_bytes(rs.content)
         try:
-            root = ET.fromstring(body)
-            cnt = collections.Counter(local(e.tag) for e in root.iter())
-            print("ROOT", local(root.tag))
-            print("TAGS", dict(cnt.most_common(40)))
-            for e in root.iter():
-                if local(e.tag) in ("DataStructure", "Dimension", "TimeDimension", "Codelist", "ContentConstraint", "Dataflow"):
-                    print("  ", local(e.tag), dict(list(e.attrib.items())[:5]))
-        except ET.ParseError as e:
-            print("XML 파싱 오류", e)
-    time.sleep(8)
+            fs = parse_structure(rs.content, f)
+            assign_roles(fs, CAND)
+            print(" dims", fs.dims, "roles", fs.roles, "time", fs.time_range)
+            for d in fs.dims:
+                print(f"  {d}: 코드목록 {len(fs.codelists.get(d, {}))}개, 제약 {len(fs.allowed.get(d, set()))}개, 예 {fs.codes(d)[:8]}")
+            print("  measure 코드", fs.codes(fs.roles["measure"])[:60])
+            break
+        except Exception as e:  # noqa: BLE001
+            print(" 구조 해석 실패", e)
+    sel = {"area": ["KOR", "USA"], "partner": ["W"], "measure": fs.codes(fs.roles["measure"])[:2], "activity": ["_T", "C26"]}
+    key = ".".join("+".join(sel[next(k for k, v in fs.roles.items() if v == d)]) if d in fs.roles.values() else "" for d in fs.dims)
+    for p in ({"startPeriod": "2020", "endPeriod": "2022", "dimensionAtObservation": "AllDimensions", "format": "csvfile"},
+              {"startPeriod": "2020", "endPeriod": "2022", "dimensionAtObservation": "AllDimensions"}):
+        rd = get(f"{base}/data/{AG},{f.id},{f.version}/{key}", p, CSV_ACCEPT)
+        path = OUT / f"{f.id}_data_{len(p)}.csv"
+        path.write_bytes(rd.content)
+        print(rd.content[:900].decode("utf-8", "replace"))
+        if rd.ok:
+            try:
+                df = read_sdmx_csv(path, fs)
+                print(" 해석 결과", len(df), "행\n", df.head(8).to_string())
+            except Exception as e:  # noqa: BLE001
+                print(" CSV 해석 실패", e)
+            break

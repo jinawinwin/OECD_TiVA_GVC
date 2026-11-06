@@ -63,6 +63,19 @@ class Flow:
     dsd_id: str | None = None
     dsd_agency: str | None = None
     dsd_version: str | None = None
+    external: bool = False
+    structure_url: str | None = None   # 외부 참조 dataflow의 실제 위치 (OECD TiVA는 /sti-public/rest)
+
+    @property
+    def service_base(self) -> str | None:
+        """외부 참조이면 실제 REST 기본 주소를 돌려준다."""
+        u = self.structure_url
+        if not u:
+            return None
+        for marker in ("/dataflow/", "/datastructure/"):
+            if marker in u:
+                return u.split(marker, 1)[0]
+        return u.rstrip("/")
 
     @property
     def edition(self) -> int | None:
@@ -110,6 +123,9 @@ def parse_dataflows(xml_bytes: bytes, agency: str) -> list[Flow]:
         ref = None
         for s in _children(el, "Structure"):
             ref = next((x for x in s.iter() if _local(x.tag) == "Ref"), None)
+        url = el.get("structureURL") or el.get("serviceURL")
+        if not url:  # 속성 이름이 다른 경우 대비
+            url = next((v for k, v in el.attrib.items() if isinstance(v, str) and v.startswith("http")), None)
         flows.append(Flow(
             id=el.get("id"),
             version=el.get("version", "latest"),
@@ -118,6 +134,8 @@ def parse_dataflows(xml_bytes: bytes, agency: str) -> list[Flow]:
             dsd_id=ref.get("id") if ref is not None else None,
             dsd_agency=ref.get("agencyID") if ref is not None else None,
             dsd_version=ref.get("version") if ref is not None else None,
+            external=(el.get("isExternalReference", "false").lower() == "true"),
+            structure_url=url,
         ))
     return flows
 
@@ -290,18 +308,28 @@ class SdmxClient:
         last.raise_for_status()
         return []
 
+    def base_for(self, flow: Flow) -> str:
+        return flow.service_base or self.base
+
     def structure(self, flow: Flow) -> FlowStructure:
-        url = f"{self.base}/dataflow/{flow.agency}/{flow.id}/{flow.version}"
-        last = None
+        url = f"{self.base_for(flow)}/dataflow/{flow.agency}/{flow.id}/{flow.version}"
+        last_err = None
         for params in ({"references": "all", "detail": "referencepartial"}, {"references": "all"},
                        {"references": "descendants"}):
             r = self._get(url, params=params, accept=STRUCT_ACCEPT)
-            if r.ok:
-                return parse_structure(r.content, flow)
-            last = r
-            log.info("구조 조회 %s %s -> HTTP %s, 다른 옵션으로 재시도", flow.id, params, r.status_code)
-        last.raise_for_status()
-        raise RuntimeError("unreachable")
+            if not r.ok:
+                last_err = RuntimeError(f"HTTP {r.status_code}")
+                log.info("구조 조회 %s %s -> HTTP %s, 다른 옵션으로 재시도", flow.id, params, r.status_code)
+                continue
+            try:
+                fs = parse_structure(r.content, flow)
+            except RuntimeError as e:   # DataStructure가 없는 응답 (예: 외부 참조만 담긴 응답)
+                last_err = e
+                log.info("구조 조회 %s %s -> %s, 다른 옵션으로 재시도", flow.id, params, e)
+                continue
+            if fs.dims:
+                return fs
+        raise RuntimeError(f"{flow.id}: 구조를 해석하지 못했습니다 ({last_err}, 주소 {url})")
 
     # ------------------------------------------------------------------ data
     def build_key(self, fs: FlowStructure, selection: dict[str, list[str]]) -> str:
@@ -314,7 +342,7 @@ class SdmxClient:
 
     def data(self, fs: FlowStructure, selection: dict[str, list[str]], start: int, end: int) -> pd.DataFrame:
         key = self.build_key(fs, selection)
-        url = f"{self.base}/data/{fs.flow.agency},{fs.flow.id},{fs.flow.version}/{key}"
+        url = f"{self.base_for(fs.flow)}/data/{fs.flow.agency},{fs.flow.id},{fs.flow.version}/{key}"
         params = {"startPeriod": str(start), "endPeriod": str(end),
                   "dimensionAtObservation": "AllDimensions", "format": "csvfile"}
         r = self._get(url, params=params, accept=CSV_ACCEPT, stream=True, max_5xx=3)
