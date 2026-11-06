@@ -70,17 +70,18 @@ blocks:
     rename: {EXGR_DVA: EXGR_DVASH, EXGR_FVA: EXGR_FVASH, FEXGR_DVA: EXGR_DVAFXSH}
     preferred_unit: PT_EXGR
 
-  # 원천 산업 기준 전방 연계 (Koopman et al. 2010의 IV). 원천 산업 부가가치가 세계(W) 수출과 자국 수출에
-  # 체화된 크기를 받아, 그 차이를 제3국 수출에 체화된 부가가치로 쓴다. pair는 원천 경제와 같은 경제만 짝지어 받는다.
+  # 원천 산업 기준 전방 연계 (Koopman et al. 2010의 IV). 원천 경제·산업의 부가가치가 각 수출 경제의 전체 수출에
+  # 체화된 크기를 받아, 받는 즉시 자국을 뺀 제3국 합계(FOREIGN)로 줄여 저장한다. (EXGRVA의 세계 W 항목은 0으로 비어 있음)
   forward_source:
     flow: EXGRVA
     years: all
+    max_obs: 400000
     dims:
       VALUE_ADDED_SOURCE_AREA: [economies]
       VALUE_ADDED_SOURCE_ACTIVITY: [detail, aggregates]
       EXPORTING_AREA: [economies]
       EXPORTING_ACTIVITY: [_T]
-    pair: {dims: [VALUE_ADDED_SOURCE_AREA, EXPORTING_AREA], extra: [W], group_size: 6}
+    reduce: {source: VALUE_ADDED_SOURCE_AREA, exporter: EXPORTING_AREA}
 
   # 수출 대상국별 총수출과 최종수요 부가가치
   destination:

@@ -98,14 +98,10 @@ class Builder:
             sh = pd.concat(parts, ignore_index=True)
             sh["measure"] = sh["measure"].map(lambda m: blk.get("rename", {}).get(m, m))
             ci = pd.concat([ci, sh[keep]], ignore_index=True)
-        # 원천 산업 부가가치 중 제3국 수출에 체화된 부분 IV = 세계(W) 수출 체화분 - 자국 수출 체화분
-        fs_ = self._read("forward_source", {})
+        # 원천 산업 부가가치 중 제3국 수출에 체화된 부분 IV (수집 단계에서 자국을 뺀 합계 FOREIGN으로 줄여 둠)
+        fs_ = self._read("forward_source", {"VALUE_ADDED_SOURCE_AREA": "area", "VALUE_ADDED_SOURCE_ACTIVITY": "activity"})
         if not fs_.empty:
-            src, sact, exa = "VALUE_ADDED_SOURCE_AREA", "VALUE_ADDED_SOURCE_ACTIVITY", "EXPORTING_AREA"
-            w = fs_[fs_[exa] == "W"].set_index([src, sact, "year"])["value"]
-            own = fs_[fs_[exa] == fs_[src]].set_index([src, sact, "year"])["value"]
-            iv = (w - own.reindex(w.index).fillna(0)).rename("value").reset_index()
-            iv = iv.rename(columns={src: "area", sact: "activity"}).assign(measure="IV", partner="W")
+            iv = fs_[fs_["EXPORTING_AREA"] == "FOREIGN"].assign(measure="IV", partner="W")
             ci = pd.concat([ci, iv[keep]], ignore_index=True)
         world = self.cfg["codes"]["world"]
         partners = ci["partner"].value_counts()

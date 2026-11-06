@@ -147,14 +147,11 @@ def value(flow, c, yi):
                         c["EXPORTING_AREA"], c["EXPORTING_ACTIVITY"])
         if s not in EI:
             return None
-        if e == "W":            # 세계 수출 = 자국 수출 + 제3국 수출 (제3국 몫 합계 = DVAFX)
-            if ea != "_T":
-                return None
-            own = value(flow, {**c, "EXPORTING_AREA": s}, yi)
-            return None if own is None else own + DVAFX[EI[s], KI[sa], yi]
+        if e == "W":            # 실제 API처럼 세계(W) 항목은 0
+            return 0.0
         if e not in EI:
             return None
-        if sa == "_T":          # 후방: 수출 경제 e(산업 ea)의 총수출에 들어간 원천 s의 부가가치
+        if sa == "_T" and ea != "_T":   # 후방: 수출 경제 e(산업 ea)의 총수출에 들어간 원천 s의 부가가치
             ie, ke = EI[e], KI[ea]
             return DVA[ie, ke, yi] if s == e else FVA[ie, ke, yi] * pw[ie, EI[s]]
         if ea == "_T":          # 전방: 원천 s(산업 sa)의 부가가치가 e의 수출에 체화된 크기
