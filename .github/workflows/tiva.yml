@@ -87,3 +87,5 @@ jobs:
       - name: GitHub Pages 배포
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 1800000          # Pages 파일 동기화가 늦을 때를 대비해 30분까지 기다림
