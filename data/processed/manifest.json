@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-11-06T10:07:00+00:00",
+ "fetched_at": "2026-11-06T10:19:48+00:00",
  "source": "https://sdmx.oecd.org/public/rest",
  "agency": "OECD.STI.PIE",
  "edition": 2025,
@@ -26,7 +26,7 @@
  "blocks": {
   "levels": {
    "flow": "DSD_TIVA_MAINLV@DF_MAINLV",
-   "rows": 1044204,
+   "rows": 1063496,
    "measures": [
     "DFD_FVA",
     "EXGR",
@@ -40,11 +40,18 @@
   },
   "shares": {
    "flow": "DSD_TIVA_MAINSH@DF_MAINSH",
-   "rows": 390096,
+   "rows": 397320,
    "measures": [
     "EXGR_DVA",
     "EXGR_FVA",
     "FEXGR_DVA"
+   ]
+  },
+  "forward_source": {
+   "flow": "DSD_TIVA_EXGRVA@DF_EXGRVA",
+   "rows": 254016,
+   "measures": [
+    "EXGRVA"
    ]
   },
   "destination": {
@@ -70,20 +77,7 @@
    ]
   }
  },
- "missing_codes": {
-  "levels": {
-   "ACTIVITY": [
-    "C24A",
-    "C24B"
-   ]
-  },
-  "shares": {
-   "ACTIVITY": [
-    "C24A",
-    "C24B"
-   ]
-  }
- },
+ "missing_codes": {},
  "latest_year": 2022,
  "partner_years": [
   2000,
@@ -96,7 +90,7 @@
   2021,
   2022
  ],
- "requests": 34,
+ "requests": 48,
  "signature": {
   "flows": [
    [
@@ -125,11 +119,12 @@
     "Trade in Value Added (TiVA) 2025 edition: Principal Indicators, shares"
    ]
   ],
-  "config": "9f5804343d9276c3"
+  "config": "93ca0267b1eb6815"
  },
  "hash": {
-  "levels": "9cd83ed1d4a0b066",
-  "shares": "3bdfe57c727cf4c1",
+  "levels": "2d504c35ef1fff98",
+  "shares": "8a882af5ebbc1d70",
+  "forward_source": "4a618d3fc3d17028",
   "destination": "b8cb4cea28809a59",
   "origin_backward": "cae34e78a298f82f",
   "origin_forward": "55d5ccf885121729"
