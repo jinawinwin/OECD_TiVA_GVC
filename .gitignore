@@ -1,0 +1,8 @@
+# 수집 중간 캐시 (GitHub Actions 캐시로 보관)
+data/cache/
+
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+.ipynb_checkpoints/

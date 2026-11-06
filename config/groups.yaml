@@ -1,0 +1,205 @@
+# 대시보드 국가군·중점 산업·한글 표기 설정
+# 국가군 구성은 여기서 수정하면 다음 빌드부터 반영된다.
+
+top_n_by_value_added: 20      # 주요국 비교 = TiVA 부가가치(VALU, 전 산업) 기준 상위 N개 경제
+
+regions:
+  EU:
+    label: EU 제조업
+    official_aggregate: EU27_2020
+    default_activity: C
+    members: [AUT, BEL, BGR, HRV, CYP, CZE, DNK, EST, FIN, FRA, DEU, GRC, HUN, IRL, ITA, LVA, LTU,
+              LUX, MLT, NLD, POL, PRT, ROU, SVK, SVN, ESP, SWE]
+  MIDEAST:
+    label: 중동
+    default_activity: _T
+    note: TiVA 2025년판에 포함된 중동 경제와 인접한 이집트, 튀르키예를 포함합니다.
+    members: [ISR, JOR, SAU, ARE, TUR, EGY]
+  SOUTHAM:
+    label: 남미
+    default_activity: _T
+    note: 멕시코와 코스타리카는 북미·중미로 분류해 제외했습니다.
+    members: [ARG, BRA, CHL, COL, PER]
+  ASIA:
+    label: 아시아
+    official_aggregate: ASEAN
+    default_activity: _T
+    subgroups:
+      동아시아: [CHN, HKG, JPN, KOR, TWN]
+      동남아시아: [BRN, KHM, IDN, LAO, MYS, MMR, PHL, SGP, THA, VNM]
+      남아시아: [BGD, IND, PAK]
+      중앙아시아: [KAZ]
+    members: [CHN, HKG, JPN, KOR, TWN, BRN, KHM, IDN, LAO, MYS, MMR, PHL, SGP, THA, VNM, BGD, IND, PAK, KAZ]
+
+korea:
+  code: KOR
+  peers: [JPN, CHN, TWN, DEU, USA]
+
+# 중점 산업. TiVA 산업분류(ISIC Rev.4 기반)에서 해당 산업을 포함하는 코드로 대응시킨다.
+focus_industries:
+  - code: C26
+    label: 반도체·전자
+    note: 컴퓨터·전자·광학기기(ISIC 26) 전체 값입니다. 반도체(ISIC 261)만 따로 분리되지 않습니다.
+  - code: C27
+    label: 이차전지·전기장비
+    note: 전기장비(ISIC 27) 전체 값입니다. 축전지(ISIC 272)만 따로 분리되지 않으며, 양극재 등 소재는 C20, 비철금속 제련은 C24B에 속합니다.
+  - code: C19
+    label: 정유
+    note: 코크스·석유정제품(ISIC 19) 전체 값입니다.
+  - code: C301
+    label: 조선
+    note: 선박 건조(ISIC 301) 값입니다. 보트 건조를 포함합니다.
+  - code: C29
+    label: 자동차
+    note: 자동차·트레일러(ISIC 29) 전체 값입니다.
+  - code: C20
+    label: 화학
+    note: 화학물질·화학제품(ISIC 20) 전체 값입니다. 이차전지 소재 일부를 포함합니다.
+
+activity_labels:
+  _T: 전 산업
+  A: 농림어업
+  B: 광업
+  C: 제조업
+  BTE: 광공업(에너지 포함)
+  D_E: 전기·가스·수도·폐기물
+  GTT: 서비스업
+  A01: 농업·축산
+  A02: 임업
+  A03: 어업·양식
+  B05: 석탄·갈탄 광업
+  B06: 원유·천연가스 채굴
+  B07: 금속 광업
+  B08: 기타 광업
+  B09: 광업 지원 서비스
+  C10T12: 식품·음료·담배
+  C13T15: 섬유·의복·가죽
+  C16: 목재·목제품
+  C17_18: 종이·인쇄
+  C19: 코크스·석유정제품
+  C20: 화학물질·화학제품
+  C21: 의약품
+  C22: 고무·플라스틱
+  C23: 비금속광물제품
+  C24A: 1차 철강
+  C24B: 1차 비철금속
+  C25: 금속가공제품
+  C26: 컴퓨터·전자·광학기기
+  C27: 전기장비
+  C28: 기타 기계·장비
+  C29: 자동차·트레일러
+  C301: 선박 건조
+  C302T309: 기타 운송장비
+  C31T33: 가구·기타 제조·수리
+  D: 전기·가스·증기
+  E: 수도·하수·폐기물
+  F: 건설
+  G: 도소매
+  H49: 육상운송
+  H50: 수상운송
+  H51: 항공운송
+  H52: 창고·운송지원
+  H53: 우편·택배
+  I: 숙박·음식점
+  J58T60: 출판·영상·방송
+  J61: 통신
+  J62_63: IT·정보서비스
+  K: 금융·보험
+  L: 부동산
+  M: 전문·과학·기술 서비스
+  N: 사업지원 서비스
+  O: 공공행정·국방
+  P: 교육
+  Q: 보건·사회복지
+  R: 예술·스포츠·여가
+  S: 기타 서비스
+  T: 가구 내 고용·자가생산
+
+area_labels:
+  W: 세계
+  WXD: 기타 세계
+  EU27_2020: EU27 (TiVA 집계)
+  OECD: OECD
+  ASEAN: ASEAN
+  G20: G20
+  APEC: APEC
+  AUS: 호주
+  AUT: 오스트리아
+  BEL: 벨기에
+  CAN: 캐나다
+  CHL: 칠레
+  COL: 콜롬비아
+  CRI: 코스타리카
+  CZE: 체코
+  DNK: 덴마크
+  EST: 에스토니아
+  FIN: 핀란드
+  FRA: 프랑스
+  DEU: 독일
+  GRC: 그리스
+  HUN: 헝가리
+  ISL: 아이슬란드
+  IRL: 아일랜드
+  ISR: 이스라엘
+  ITA: 이탈리아
+  JPN: 일본
+  KOR: 한국
+  LVA: 라트비아
+  LTU: 리투아니아
+  LUX: 룩셈부르크
+  MEX: 멕시코
+  NLD: 네덜란드
+  NZL: 뉴질랜드
+  NOR: 노르웨이
+  POL: 폴란드
+  PRT: 포르투갈
+  SVK: 슬로바키아
+  SVN: 슬로베니아
+  ESP: 스페인
+  SWE: 스웨덴
+  CHE: 스위스
+  TUR: 튀르키예
+  GBR: 영국
+  USA: 미국
+  AGO: 앙골라
+  ARG: 아르헨티나
+  BGD: 방글라데시
+  BLR: 벨라루스
+  BRA: 브라질
+  BRN: 브루나이
+  BGR: 불가리아
+  KHM: 캄보디아
+  CMR: 카메룬
+  CHN: 중국
+  CIV: 코트디부아르
+  HRV: 크로아티아
+  CYP: 키프로스
+  COD: 콩고민주공화국
+  EGY: 이집트
+  HKG: 홍콩
+  IND: 인도
+  IDN: 인도네시아
+  JOR: 요르단
+  KAZ: 카자흐스탄
+  LAO: 라오스
+  MYS: 말레이시아
+  MLT: 몰타
+  MAR: 모로코
+  MMR: 미얀마
+  NGA: 나이지리아
+  PAK: 파키스탄
+  PER: 페루
+  PHL: 필리핀
+  ROU: 루마니아
+  RUS: 러시아
+  STP: 상투메프린시페
+  SAU: 사우디아라비아
+  SEN: 세네갈
+  SGP: 싱가포르
+  ZAF: 남아프리카공화국
+  TWN: 대만
+  THA: 태국
+  TUN: 튀니지
+  UKR: 우크라이나
+  ARE: 아랍에미리트
+  VNM: 베트남

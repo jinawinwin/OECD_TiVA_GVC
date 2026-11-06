@@ -1,0 +1,67 @@
+# OECD TiVA 수집 설정
+# 지표·산업·국가 코드는 "Guide to OECD Trade in Value Added (TiVA) Indicators, 2025 edition" 기준.
+# dataflow id와 차원 순서는 실행 시 OECD SDMX API에서 자동으로 확인한다.
+
+source:
+  base_url: https://sdmx.oecd.org/public/rest
+  agency: OECD.STI.PIE
+  flow_keyword: TIVA              # dataflow id에 이 문자열이 들어간 것만 탐색
+  preferred_flow_order: [MAINLV, MAIN, BSCI]   # 같은 지표가 여러 dataflow에 있으면 앞의 것을 우선
+  min_request_interval_sec: 6     # 요청 사이 최소 간격 (OECD API 사용량 제한 대응)
+  max_obs_per_query: 250000       # 한 번의 요청에서 받을 관측치 상한 추정값, 초과 시 자동 분할
+  max_key_length: 1800            # URL 키 길이 상한, 초과 시 자동 분할
+  timeout_sec: 600
+  max_retries: 10
+
+# 차원 id 후보. DSD에서 처음 일치하는 것을 사용한다.
+dimensions:
+  area: [REF_AREA, COU, COUNTRY]
+  partner: [COUNTERPART_AREA, PAR, PARTNER]
+  measure: [MEASURE, INDICATOR, VAR]
+  activity: [ACTIVITY, IND, INDUSTRY]
+
+codes:
+  world: W
+  rest_of_world: WXD
+  total_activity: _T
+  manufacturing: C
+  # 80개 개별 경제 + 기타 세계(WXD)
+  economies: [
+    AUS, AUT, BEL, CAN, CHL, COL, CRI, CZE, DNK, EST, FIN, FRA, DEU, GRC, HUN, ISL, IRL, ISR, ITA,
+    JPN, KOR, LVA, LTU, LUX, MEX, NLD, NZL, NOR, POL, PRT, SVK, SVN, ESP, SWE, CHE, TUR, GBR, USA,
+    AGO, ARG, BGD, BLR, BRA, BRN, BGR, KHM, CMR, CHN, CIV, HRV, CYP, COD, EGY, HKG, IND, IDN, JOR,
+    KAZ, LAO, MYS, MLT, MAR, MMR, NGA, PAK, PER, PHL, ROU, RUS, STP, SAU, SEN, SGP, ZAF, TWN, THA,
+    TUN, UKR, ARE, VNM, WXD
+  ]
+  # TiVA가 직접 제공하는 지역 집계 (있는 것만 수집)
+  aggregates: [W, EU27_2020, OECD, ASEAN, G20, APEC]
+
+activities:
+  detail: [
+    A01, A02, A03, B05, B06, B07, B08, B09,
+    C10T12, C13T15, C16, C17_18, C19, C20, C21, C22, C23, C24A, C24B, C25, C26, C27, C28, C29,
+    C301, C302T309, C31T33,
+    D, E, F, G, H49, H50, H51, H52, H53, I, J58T60, J61, J62_63, K, L, M, N, O, P, Q, R, S, T
+  ]
+  aggregates: [_T, A, B, C, BTE, D_E, F, GTT]
+
+blocks:
+  # 1) 국가 × 산업 × 연도 (상대국 = 세계)
+  country_industry:
+    measures: [
+      EXGR, IMGR, EXGR_INT, EXGR_DVA, EXGR_FVA, VALU, FFD_DVA, DFD_FVA,
+      EXGR_DVASH, EXGR_FVASH, EXGR_DVAFXSH
+    ]
+    areas: [economies, aggregates]
+    partners: [world]
+    activities: [detail, aggregates]
+    start_year: 1995
+
+  # 2) 국가 × 상대국 × 산업 (선택 연도)
+  partner:
+    measures: [EXGR, FFD_DVA, DEXFVApSH, FEXDVApSH]
+    areas: [economies]
+    partners: all
+    activities: [_T, C, C26, C27, C19, C301, C29, C20]
+    benchmark_years: [2000, 2005, 2010, 2015]
+    recent_years: 5                # 최신 연도부터 거슬러 올라간 연도 수를 자동 추가

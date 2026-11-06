@@ -1,0 +1,89 @@
+name: TiVA 데이터 갱신 및 배포
+
+on:
+  schedule:
+    - cron: "17 3 5 * *"          # 매월 5일 03:17 UTC (한국 12:17). 새 판이 있을 때만 전체 수집
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "판이 같아도 전체 데이터를 다시 수집"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "scripts/**"
+      - "config/**"
+      - "requirements.txt"
+      - ".github/workflows/tiva.yml"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: tiva-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 패키지 설치
+        run: pip install -r requirements.txt
+
+      - name: 수집 캐시 복원
+        uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: tiva-cache-${{ hashFiles('config/tiva.yaml') }}-${{ github.run_id }}
+          restore-keys: |
+            tiva-cache-${{ hashFiles('config/tiva.yaml') }}-
+
+      - name: OECD TiVA 수집
+        run: python scripts/fetch_tiva.py ${{ inputs.force && '--force' || '' }}
+
+      - name: 분석 및 대시보드 데이터 생성
+        run: python scripts/build_dashboard_data.py
+
+      - name: 변경된 데이터 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed docs/data
+          if git diff --cached --quiet; then
+            echo "데이터 변경 없음"
+          else
+            git commit -m "TiVA 데이터 갱신 ($(date -u +%Y-%m-%d))"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Pages 설정 확인
+        uses: actions/configure-pages@v5
+
+      - name: Pages 산출물 업로드
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: GitHub Pages 배포
+        id: deployment
+        uses: actions/deploy-pages@v4
