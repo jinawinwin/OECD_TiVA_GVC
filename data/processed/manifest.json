@@ -1,0 +1,137 @@
+{
+ "fetched_at": "2026-11-06T10:07:00+00:00",
+ "source": "https://sdmx.oecd.org/public/rest",
+ "agency": "OECD.STI.PIE",
+ "edition": 2025,
+ "flows": [
+  {
+   "id": "DSD_TIVA_EXGRVA@DF_EXGRVA",
+   "version": "1.1",
+   "name": "Trade in Value Added (TiVA) 2025 edition: Origin of value added in gross exports",
+   "service": "https://sdmx.oecd.org/sti-public/rest"
+  },
+  {
+   "id": "DSD_TIVA_MAINLV@DF_MAINLV",
+   "version": "1.1",
+   "name": "Trade in Value Added (TiVA) 2025 edition: Principal Indicators, levels",
+   "service": "https://sdmx.oecd.org/sti-public/rest"
+  },
+  {
+   "id": "DSD_TIVA_MAINSH@DF_MAINSH",
+   "version": "1.1",
+   "name": "Trade in Value Added (TiVA) 2025 edition: Principal Indicators, shares",
+   "service": "https://sdmx.oecd.org/sti-public/rest"
+  }
+ ],
+ "blocks": {
+  "levels": {
+   "flow": "DSD_TIVA_MAINLV@DF_MAINLV",
+   "rows": 1044204,
+   "measures": [
+    "DFD_FVA",
+    "EXGR",
+    "EXGR_DVA",
+    "EXGR_FVA",
+    "EXGR_INT",
+    "FFD_DVA",
+    "IMGR",
+    "VALU"
+   ]
+  },
+  "shares": {
+   "flow": "DSD_TIVA_MAINSH@DF_MAINSH",
+   "rows": 390096,
+   "measures": [
+    "EXGR_DVA",
+    "EXGR_FVA",
+    "FEXGR_DVA"
+   ]
+  },
+  "destination": {
+   "flow": "DSD_TIVA_MAINLV@DF_MAINLV",
+   "rows": 944784,
+   "measures": [
+    "EXGR",
+    "FFD_DVA"
+   ]
+  },
+  "origin_backward": {
+   "flow": "DSD_TIVA_EXGRVA@DF_EXGRVA",
+   "rows": 472392,
+   "measures": [
+    "EXGRVA"
+   ]
+  },
+  "origin_forward": {
+   "flow": "DSD_TIVA_EXGRVA@DF_EXGRVA",
+   "rows": 472392,
+   "measures": [
+    "EXGRVA"
+   ]
+  }
+ },
+ "missing_codes": {
+  "levels": {
+   "ACTIVITY": [
+    "C24A",
+    "C24B"
+   ]
+  },
+  "shares": {
+   "ACTIVITY": [
+    "C24A",
+    "C24B"
+   ]
+  }
+ },
+ "latest_year": 2022,
+ "partner_years": [
+  2000,
+  2005,
+  2010,
+  2015,
+  2018,
+  2019,
+  2020,
+  2021,
+  2022
+ ],
+ "requests": 34,
+ "signature": {
+  "flows": [
+   [
+    "DSD_TIVA_EXGRVA@DF_EXGRVA",
+    "1.1",
+    "Trade in Value Added (TiVA) 2025 edition: Origin of value added in gross exports"
+   ],
+   [
+    "DSD_TIVA_FDVA@DF_FDVA",
+    "1.1",
+    "Trade in Value Added (TiVA) 2025 edition: Origin of value added in final demand"
+   ],
+   [
+    "DSD_TIVA_IMGRVA@DF_IMGRVA",
+    "1.1",
+    "Trade in Value Added (TiVA) 2025 edition: Origin of value added in gross imports"
+   ],
+   [
+    "DSD_TIVA_MAINLV@DF_MAINLV",
+    "1.1",
+    "Trade in Value Added (TiVA) 2025 edition: Principal Indicators, levels"
+   ],
+   [
+    "DSD_TIVA_MAINSH@DF_MAINSH",
+    "1.1",
+    "Trade in Value Added (TiVA) 2025 edition: Principal Indicators, shares"
+   ]
+  ],
+  "config": "9f5804343d9276c3"
+ },
+ "hash": {
+  "levels": "9cd83ed1d4a0b066",
+  "shares": "3bdfe57c727cf4c1",
+  "destination": "b8cb4cea28809a59",
+  "origin_backward": "cae34e78a298f82f",
+  "origin_forward": "55d5ccf885121729"
+ }
+}
