@@ -51,9 +51,9 @@ focus_industries:
     note_en: "Whole of computer, electronic and optical products (ISIC 26). Semiconductors (ISIC 261) are not shown separately."
   - code: C27
     label: 이차전지·전기장비
-    note: 전기장비(ISIC 27) 전체 값입니다. 축전지(ISIC 272)만 따로 분리되지 않으며, 양극재 등 소재는 C20, 비철금속 제련은 C24(1차 금속)에 속합니다.
+    note: 전기장비(ISIC 27) 전체 값입니다. 축전지(ISIC 272)만 따로 분리되지 않으며, 양극재 등 소재는 C20, 니켈·코발트 등 비철금속 제련은 C242_2432(1차 비철금속)에 속합니다.
     label_en: Batteries & electrical equipment
-    note_en: "Whole of electrical equipment (ISIC 27). Batteries (ISIC 272) are not shown separately. Cathode and other materials fall under C20, and non-ferrous metal smelting under C24 (basic metals)."
+    note_en: "Whole of electrical equipment (ISIC 27). Batteries (ISIC 272) are not shown separately. Cathode and other materials fall under C20, and nickel, cobalt and other non-ferrous metal refining under C242_2432 (basic precious and non-ferrous metals)."
   - code: C19
     label: 정유
     note: 코크스·석유정제품(ISIC 19) 전체 값입니다.
@@ -100,7 +100,8 @@ activity_labels:
   C21: 의약품
   C22: 고무·플라스틱
   C23: 비금속광물제품
-  C24: 1차 금속 (철강·비철금속)
+  C241_2431: 1차 철강
+  C242_2432: 1차 비철금속
   C25: 금속가공제품
   C26: 컴퓨터·전자·광학기기
   C27: 전기장비
@@ -158,7 +159,8 @@ activity_labels_en:
   C21: Pharmaceuticals
   C22: Rubber & plastics
   C23: Non-metallic minerals
-  C24: Basic metals
+  C241_2431: Basic iron & steel
+  C242_2432: Basic precious & non-ferrous metals
   C25: Fabricated metal products
   C26: Computers, electronics & optical
   C27: Electrical equipment

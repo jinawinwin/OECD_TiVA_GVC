@@ -1,4 +1,4 @@
-name: OECD API 진단
+name: OECD API probe (API 진단)
 
 on:
   workflow_dispatch:

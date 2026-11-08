@@ -5,10 +5,13 @@
   const S = { meta: null, countries: null, cache: new Map(), charts: [], observers: [], state: {}, token: 0, view: null };
 
   // ------------------------------------------------------------------ language
+  // 언어 결정 순서 = 주소의 ?lang= → 이전에 고른 언어 → 브라우저 첫 번째 언어 (한국어면 ko, 그 밖에는 en)
   let LANG = (() => {
     const q = new URLSearchParams(location.search).get('lang');
     if (q === 'en' || q === 'ko') return q;
-    try { return localStorage.getItem('tiva-lang') || 'ko'; } catch (e) { return 'ko'; }
+    try { const saved = localStorage.getItem('tiva-lang'); if (saved === 'en' || saved === 'ko') return saved; } catch (e) { /* 저장소 사용 불가 */ }
+    const first = ((navigator.languages && navigator.languages[0]) || navigator.language || '').toLowerCase();
+    return first.startsWith('ko') ? 'ko' : 'en';
   })();
   const tr = (ko, en) => (LANG === 'en' ? en : ko);
 
@@ -1416,9 +1419,8 @@
     ].filter(Boolean));
     if (qa && qa.checks) {
       box.append(el('h3', { text: tr('데이터 품질 점검', 'Data quality checks') }),
-        p(tr('점검 항목 이름은 수집 단계에서 기록한 원문입니다.', 'Check names are recorded in Korean by the processing step.')),
         el('div', { class: 'table-wrap' }, makeTable([
-          { key: 'name', label: tr('점검 항목', 'Check'), left: true, sort: false },
+          { key: 'name', label: tr('점검 항목', 'Check'), left: true, sort: false, fmt: (v, r) => (LANG === 'en' ? r.name_en || v : v) },
           { key: 'value', label: tr('결과', 'Result'), fmt: v => Array.isArray(v) ? v.map(x => (typeof x === 'number' ? nf(4).format(x) : x)).join(' / ') : (typeof v === 'number' ? nf(4).format(v) : String(v)), sort: false },
           { key: 'ok', label: tr('판정', 'Status'), fmt: v => (v ? tr('통과', 'Passed') : tr('확인 필요', 'Review')), sort: false },
         ], qa.checks)));

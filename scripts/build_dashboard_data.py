@@ -182,7 +182,8 @@ class Builder:
             ratio = (fwd[:n, t_idx, :] / np.where(both, off_t[:n], np.nan))[both]
             self.check("전방 참여율 계산값(IV/총수출) ÷ 공식 FEXGR_DVA, 전 산업 (중앙값, 1에 가까워야 함)",
                        float(np.median(ratio)) if ratio.size else None,
-                       ok=bool(ratio.size == 0 or 0.97 <= np.median(ratio) <= 1.03))
+                       ok=bool(ratio.size == 0 or 0.97 <= np.median(ratio) <= 1.03),
+                       name_en="Computed forward participation (IV / gross exports) over official FEXGR_DVA, all industries (median, expected close to 1)")
         A["EXGR_DVAFXSH"] = fwd
 
         comp_back = safe_div(A["EXGR_FVA"], A["EXGR"], 100)
@@ -200,11 +201,13 @@ class Builder:
         diff = diff[np.isfinite(diff) & (A["EXGR"][:n_e] > 1)]
         self.check("공식 FVA 비중(EXGR_FVASH)과 EXGR_FVA/EXGR 계산값 차이 (%p, 중앙값·최댓값)",
                    [float(np.median(diff)) if diff.size else None, float(diff.max()) if diff.size else None],
-                   ok=bool(diff.size == 0 or np.median(diff) < 0.5))
+                   ok=bool(diff.size == 0 or np.median(diff) < 0.5),
+                   name_en="Difference between the official FVA share (EXGR_FVASH) and EXGR_FVA / EXGR (pp, median and maximum)")
         s = (dva + back)[:n_e]
         s = s[np.isfinite(s)]
         self.check("국내부가가치 비중 + 해외부가가치 비중 (중앙값, 100에 가까워야 함)",
-                   float(np.median(s)) if s.size else None, ok=bool(s.size == 0 or abs(np.median(s) - 100) < 2))
+                   float(np.median(s)) if s.size else None, ok=bool(s.size == 0 or abs(np.median(s) - 100) < 2),
+                   name_en="Domestic plus foreign value added share of gross exports (median, expected close to 100)")
 
         # 세계 합계 = 개별 경제(기타 세계 포함) 합계
         self.world = {}
@@ -224,15 +227,16 @@ class Builder:
             rel = rel[np.isfinite(rel)]
             if rel.size:
                 self.check("TiVA 세계(W) 부가가치와 개별 경제 합계의 차이 (%, 중앙값)",
-                           float(np.median(rel)), ok=bool(np.median(rel) < 1))
+                           float(np.median(rel)), ok=bool(np.median(rel) < 1),
+                           name_en="Difference between TiVA world (W) value added and the sum of economies (%, median)")
 
         # 주요국: 부가가치(VALU, 전 산업) 상위 N
         valu = A["VALU"][:n_e, t, self.yi[self.latest]]
         order = [self.econ[i] for i in np.argsort(-np.nan_to_num(valu, nan=-1)) if self.econ[i] != self.cfg["codes"]["rest_of_world"]]
         self.top = order[: self.grp["top_n_by_value_added"]]
 
-    def check(self, name, value, ok=True):
-        self.qa["checks"].append({"name": name, "value": value, "ok": ok})
+    def check(self, name, value, ok=True, name_en=None):
+        self.qa["checks"].append({"name": name, "name_en": name_en or name, "value": value, "ok": ok})
         (log.info if ok else log.warning)("점검 %s: %s %s", "통과" if ok else "주의", name, value)
 
     # ------------------------------------------------------------- partner
@@ -278,8 +282,8 @@ class Builder:
         # 점검: 원천별 합계가 공식 비중과 맞는지. 후방은 모든 산업, 전방은 전 산업(_T)에서 비교한다.
         # 산업별 전방 연계는 '원천 산업' 기준이라 '수출 산업' 기준인 공식 산업별 전방 참여율과 개념이 다르다.
         n = len(self.econ)
-        for m, total, label, acts in (("DEXFVApSH", "EXGR_FVASH", "후방", self.p_acts),
-                                      ("FEXDVApSH", "fwd", "전방", self.p_acts)):
+        for m, total, label, acts in (("DEXFVApSH", "EXGR_FVASH", ("후방", "backward"), self.p_acts),
+                                      ("FEXDVApSH", "fwd", ("전방", "forward"), self.p_acts)):
             ks = [self.p_acts.index(k) for k in acts if k in self.p_acts]
             if not ks or np.all(np.isnan(self.P[m])):
                 continue
@@ -289,8 +293,9 @@ class Builder:
             valid = np.isfinite(tot) & (tot > 0.5) & (ssum > 0)
             ratio = (ssum / np.where(valid, tot, np.nan))[valid]
             med = float(np.median(ratio)) if ratio.size else None
-            self.check(f"원천별 합계 ÷ 공식 {label} 참여율 (중앙값, 1에 가까워야 함)",
-                       med, ok=med is None or 0.97 <= med <= 1.03)
+            self.check(f"원천별 합계 ÷ 공식 {label[0]} 참여율 (중앙값, 1에 가까워야 함)",
+                       med, ok=med is None or 0.97 <= med <= 1.03,
+                       name_en=f"Sum over source economies over official {label[1]} participation (median, expected close to 1)")
 
         # 지역 합계 (USD 기준으로 더한 뒤 지역 총수출 대비 %로)
         for rid, r in self.regions.items():

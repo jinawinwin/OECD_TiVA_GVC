@@ -1,4 +1,4 @@
-name: TiVA 데이터 갱신 및 배포
+name: TiVA update and deploy (데이터 갱신 및 배포)
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: "판이 같아도 전체 데이터를 다시 수집"
+        description: "Re-collect all data even if the edition is unchanged (판이 같아도 전체 재수집)"
         type: boolean
         default: false
   push:
@@ -64,7 +64,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "데이터 변경 없음"
           else
-            git commit -m "TiVA 데이터 갱신 ($(date -u +%Y-%m-%d))"
+            git commit -m "Update TiVA data / TiVA 데이터 갱신 ($(date -u +%Y-%m-%d))"
             git pull --rebase origin "${GITHUB_REF_NAME}"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
